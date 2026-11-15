@@ -11,7 +11,7 @@ public sealed class GitHubAppCredentialsTests : IDisposable
 {
     private const string Token = "ghs_testtoken0000000000000000000000000000";
     private const string MetadataToken = "ghs_metadataonly000000000000000000000000";
-    private readonly string _keyPath = Path.Combine(Path.GetTempPath(), $"orchestrator-test-{Guid.NewGuid():N}.pem");
+    private readonly string _keyPath = Path.Join(Path.GetTempPath(), $"orchestrator-test-{Guid.NewGuid():N}.pem");
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 15, 12, 0, 0, TimeSpan.Zero));
     private readonly FakeHttpHandler _handler = new();
     private readonly ListLogger<GitHubAppCredentials> _logger = new();
