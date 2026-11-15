@@ -49,13 +49,13 @@ On the App's page:
 From PowerShell on your PC (adjust the downloaded file name):
 
 ```powershell
-scp -i ~/.ssh/ci_vm_ed25519 "$HOME\Downloads\thiagoluga-runner-pool.2026-11-15.private-key.pem" ci@192.168.68.50:/tmp/github-app.pem
+scp -i ~/.ssh/ci_vm_ed25519 "$HOME\Downloads\thiagoluga-runner-pool.2026-11-15.private-key.pem" ci@192.168.68.66:/tmp/github-app.pem
 ```
 
-On the host (`ssh -i ~/.ssh/ci_vm_ed25519 ci@192.168.68.50`):
+On the pool host `gh-runner-2` (`ssh -i ~/.ssh/ci_vm_ed25519 ci@192.168.68.66`), where
+`/etc/gh-runners-orchestrator` already exists with mode 0700 and owner 1654:
 
 ```bash
-sudo install -d -m 0700 -o 1654 -g 1654 /etc/gh-runners-orchestrator
 sudo install -m 0400 -o 1654 -g 1654 /tmp/github-app.pem /etc/gh-runners-orchestrator/github-app.pem
 shred -u /tmp/github-app.pem
 sudo ls -l /etc/gh-runners-orchestrator/
