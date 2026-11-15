@@ -12,7 +12,7 @@ public sealed class DemandAndGuardTests
     private readonly IGitHubRunnerApi _api = Substitute.For<IGitHubRunnerApi>();
 
     [Fact]
-    public async Task CountQueuedJobs_ReadsQueuedAndInProgressRunsOnce_CountsOnlyServedQueuedJobs()
+    public async Task ReadQueuedJobs_ReadsQueuedAndInProgressRunsOnce_CountsOnlyServedQueuedJobsAndOldest()
     {
         _api.ListRunIdsAsync(Sandbox, "queued", Arg.Any<CancellationToken>()).Returns([1L]);
         _api.ListRunIdsAsync(Sandbox, "in_progress", Arg.Any<CancellationToken>()).Returns([1L, 2L]);
@@ -22,13 +22,13 @@ public sealed class DemandAndGuardTests
         ]);
         _api.ListJobsAsync(Sandbox, 2, Arg.Any<CancellationToken>()).Returns([
             Job(2, "in_progress", "vm-pool"),
-            Job(2, "queued", "self-hosted", "vm-pool"),
+            Job(2, "queued", "self-hosted", "vm-pool") with { CreatedAt = new DateTimeOffset(2026, 11, 15, 11, 0, 0, TimeSpan.Zero) },
         ]);
         var poller = new DemandPoller(_api, TestOptions.Wrap(TestOptions.Orchestrator()));
 
-        var count = await poller.CountQueuedJobsAsync(Sandbox, TestContext.Current.CancellationToken);
+        var queued = await poller.ReadQueuedJobsAsync(Sandbox, TestContext.Current.CancellationToken);
 
-        count.Should().Be(2);
+        queued.Should().Be(new QueuedJobs(2, new DateTimeOffset(2026, 11, 15, 11, 0, 0, TimeSpan.Zero)));
         await _api.Received(1).ListJobsAsync(Sandbox, 1, Arg.Any<CancellationToken>());
     }
 

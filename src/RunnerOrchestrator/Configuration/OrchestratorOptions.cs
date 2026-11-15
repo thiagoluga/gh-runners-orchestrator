@@ -10,6 +10,9 @@ public sealed class OrchestratorOptions
 
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(20);
 
+    /// <summary>A runner that has not picked a job after this long is removed (ADR 0004).</summary>
+    public TimeSpan IdleRunnerTimeout { get; set; } = TimeSpan.FromMinutes(10);
+
     /// <summary>Labels the pool serves; a queued job is served when all its labels are in this set.</summary>
     public IList<string> RunnerLabels { get; } = [];
 

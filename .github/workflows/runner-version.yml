@@ -1,0 +1,82 @@
+name: Runner version
+
+# GitHub stops sending jobs to runners that are too old, and Dependabot does not track the
+# runner tarball (#17). Weekly, compare the pinned runner with the latest actions/runner
+# release and open a pull request with the new version and its SHA-256.
+#
+# A pull request opened with GITHUB_TOKEN does not start other workflows: close and reopen it
+# (or push to it) to run CI before merging.
+
+on:
+  schedule:
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Branch to compare and to open the pull request against
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      BASE: ${{ inputs.base || 'main' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.base || 'main' }}
+      - name: Compare the pinned and the latest runner
+        id: compare
+        run: |
+          current=$(sed -n 's/^ARG RUNNER_VERSION=//p' runner/Dockerfile)
+          latest=$(gh api repos/actions/runner/releases/latest --jq '.tag_name | ltrimstr("v")')
+          echo "pinned $current, latest $latest"
+          if ! [[ "$latest" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "unexpected tag '$latest'"; exit 1; fi
+          if [ "$current" = "$latest" ] || [ "$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -1)" = "$current" ]; then
+            echo "up to date"; exit 0
+          fi
+          branch="chore/runner-$latest"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "$branch already exists"; exit 0
+          fi
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+      - name: Pin the new version and its checksum
+        if: steps.compare.outputs.latest != ''
+        env:
+          CURRENT: ${{ steps.compare.outputs.current }}
+          LATEST: ${{ steps.compare.outputs.latest }}
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/runner.tgz" "https://github.com/actions/runner/releases/download/v${LATEST}/actions-runner-linux-x64-${LATEST}.tar.gz"
+          sha=$(sha256sum "$RUNNER_TEMP/runner.tgz" | cut -d' ' -f1)
+          sed -i "s/^ARG RUNNER_VERSION=.*/ARG RUNNER_VERSION=${LATEST}/; s/^ARG RUNNER_SHA256=.*/ARG RUNNER_SHA256=${sha}/" runner/Dockerfile
+          grep -rl --include='*.json' --include='*.md' "orchestrator-runner:${CURRENT}" deploy docs README.md 2>/dev/null \
+            | xargs -r sed -i "s/orchestrator-runner:${CURRENT}/orchestrator-runner:${LATEST}/g"
+          git diff --stat
+      - name: Open the pull request
+        if: steps.compare.outputs.latest != ''
+        env:
+          LATEST: ${{ steps.compare.outputs.latest }}
+          BRANCH: ${{ steps.compare.outputs.branch }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git commit -am "chore: update the runner to ${LATEST}"
+          git push origin "$BRANCH"
+          gh pr create --base "$BASE" --head "$BRANCH" \
+            --title "chore: update the runner to ${LATEST}" \
+            --body "Pins actions/runner ${LATEST} with the SHA-256 of the downloaded tarball. Close and reopen this pull request to run CI. Release notes: https://github.com/actions/runner/releases/tag/v${LATEST}"

@@ -9,3 +9,6 @@ TestResults/
 *.pem
 appsettings.Local.json
 repositories.Local.json
+deploy/.env
+deploy/config/orchestrator.json
+deploy/config/repositories.json

@@ -1,0 +1,15 @@
+{
+  "Orchestrator": {
+    "Owner": "thiagoluga",
+    "PollInterval": "00:00:20",
+    "IdleRunnerTimeout": "00:10:00",
+    "RunnerLabels": [ "vm-pool" ],
+    "RunnerImage": "ghcr.io/thiagoluga/gh-runners-orchestrator-runner:2.338.2",
+    "DockerSocket": "/var/run/docker.sock",
+    "GitHubApp": { "AppId": 5770327 },
+    "Slots": [
+      { "Name": "slot-1", "Cpuset": "0-4", "Memory": "16g" },
+      { "Name": "slot-2", "Cpuset": "5-9", "Memory": "16g" }
+    ]
+  }
+}

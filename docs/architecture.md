@@ -1,8 +1,9 @@
 # Architecture
 
-Status: the proof of concept runs ([report](proof-of-concept.md)): GitHub App credentials,
-demand polling, repository guard, slot planning, launch and removal of finished runners.
-Idle timeout, orphan sweep and configuration reload come in phase 3; see [PLAN.md](../PLAN.md).
+Status: implemented through phase 3 ([proof of concept](proof-of-concept.md),
+[operations](operations.md)): GitHub App credentials, demand polling, repository guard with a
+reloadable list, fair slot planning, launch, idle timeout, orphan sweep both ways, removal of
+finished runners, and the runner version watch. See [PLAN.md](../PLAN.md).
 
 ## What it does
 
@@ -75,7 +76,9 @@ One cycle, every `PollInterval`:
 }
 ```
 
-The repository list is its own file, so enabling a repository never touches anything else:
+The deployment reads this from `config/orchestrator.json` ([deploy/](../deploy/compose.yaml));
+environment variables override it. The repository list is its own file, reloaded on change,
+so enabling a repository never touches anything else:
 
 ```jsonc
 { "Repositories": [ { "Name": "thiagoluga/saas-foundry", "MaxConcurrent": 2 } ] }

@@ -48,6 +48,8 @@ internal sealed class AccessTokenResponse
 
 internal sealed record ErrorResponse(string? Message);
 
+internal sealed record ReleaseDto(string TagName);
+
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(InstallationRepositoriesResponse))]
 [JsonSerializable(typeof(WorkflowRunsResponse))]
@@ -60,4 +62,5 @@ internal sealed record ErrorResponse(string? Message);
 [JsonSerializable(typeof(AccessTokenRequest))]
 [JsonSerializable(typeof(AccessTokenResponse))]
 [JsonSerializable(typeof(ErrorResponse))]
+[JsonSerializable(typeof(ReleaseDto))]
 internal sealed partial class GitHubJsonContext : JsonSerializerContext;

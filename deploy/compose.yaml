@@ -1,0 +1,34 @@
+# Reference deployment for any Linux host with Docker Engine (docs/adr/0008-portable-deployment.md).
+# Setup and operation: docs/operations.md. Nothing secret lives in this folder: the App key is a
+# file on the host, mounted as a Compose secret.
+name: gh-runners-orchestrator
+
+services:
+  orchestrator:
+    image: ghcr.io/thiagoluga/gh-runners-orchestrator:${ORCHESTRATOR_TAG:?Set ORCHESTRATOR_TAG in .env}
+    restart: unless-stopped
+    # The orchestrator talks to the host Docker Engine; it runs as uid 1654 and needs the
+    # socket's group (stat -c %g /var/run/docker.sock).
+    group_add: ["${DOCKER_GID:?Set DOCKER_GID in .env}"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config:/app/config:ro
+    environment:
+      SettingsFile: config/orchestrator.json
+      RepositoriesFile: config/repositories.json
+      # Picks up edits of the repository list made on the host, whatever the editor does to the file.
+      DOTNET_USE_POLLING_FILE_WATCHER: "true"
+      Orchestrator__DockerSocketGroupId: ${DOCKER_GID}
+      Orchestrator__GitHubApp__PrivateKeyPath: /run/secrets/github-app.pem
+    secrets:
+      - github-app.pem
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+
+secrets:
+  github-app.pem:
+    # Mode 0400, owner 1654 (docs/maintainer-setup.md). Never copied anywhere else.
+    file: ${GITHUB_APP_KEY_FILE:-/etc/gh-runners-orchestrator/github-app.pem}

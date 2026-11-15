@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Time.Testing;
+using RunnerOrchestrator.Configuration;
 using RunnerOrchestrator.Docker;
 using RunnerOrchestrator.GitHub;
 using RunnerOrchestrator.Pool;
@@ -13,6 +14,7 @@ public sealed class PoolCycleTests
     private readonly IContainerRuntime _runtime = Substitute.For<IContainerRuntime>();
     private readonly ListLogger<PoolCycle> _logger = new();
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 15, 12, 0, 0, TimeSpan.Zero));
+    private readonly MutableOptionsMonitor<RepositoryListOptions> _repositories = TestOptions.Monitor(TestOptions.Repositories("thiagoluga/runner-pool-sandbox"));
 
     public PoolCycleTests()
     {
@@ -22,6 +24,7 @@ public sealed class PoolCycleTests
             .Returns(call => new JitRunner(1, call.ArgAt<string>(1), "jit"));
         _runtime.ListByLabelAsync("orchestrator.managed=true", Arg.Any<CancellationToken>()).Returns([]);
         _runtime.CreateAsync(Arg.Any<ContainerSpec>(), Arg.Any<CancellationToken>()).Returns("new");
+        _api.ListRunnersAsync(Arg.Any<RepositoryName>(), Arg.Any<CancellationToken>()).Returns([]);
     }
 
     [Fact]
@@ -150,6 +153,94 @@ public sealed class PoolCycleTests
         await _runtime.DidNotReceiveWithAnyArgs().RemoveAsync(default!, TestContext.Current.CancellationToken);
     }
 
+    [Fact]
+    public async Task RunOnce_RunnerIdlePastTimeout_DeletesRunnerThenRemovesContainer()
+    {
+        _runtime.ListByLabelAsync("orchestrator.managed=true", Arg.Any<CancellationToken>()).Returns([Container("c1", "running", "slot-1")]);
+        _api.ListRunnersAsync(Sandbox, Arg.Any<CancellationToken>()).Returns([new SelfHostedRunner(7, "orch-c1", "online", false)]);
+        _time.Advance(TimeSpan.FromMinutes(11));
+
+        await Create().RunOnceAsync(TestContext.Current.CancellationToken);
+
+        Received.InOrder(() =>
+        {
+            _api.DeleteRunnerAsync(Sandbox, 7, Arg.Any<CancellationToken>());
+            _runtime.RemoveAsync("c1", Arg.Any<CancellationToken>());
+        });
+        _logger.AllText.Should().Contain("picked no job before the idle timeout");
+    }
+
+    [Fact]
+    public async Task RunOnce_IdleRunnerPicksJobBeforeDelete_KeepsContainer()
+    {
+        _runtime.ListByLabelAsync("orchestrator.managed=true", Arg.Any<CancellationToken>()).Returns([Container("c1", "running", "slot-1")]);
+        _api.ListRunnersAsync(Sandbox, Arg.Any<CancellationToken>()).Returns([new SelfHostedRunner(7, "orch-c1", "online", false)]);
+        _api.DeleteRunnerAsync(Sandbox, 7, Arg.Any<CancellationToken>()).Returns<Task>(_ => throw new GitHubApiException(System.Net.HttpStatusCode.UnprocessableEntity, "DELETE", "/x", "Runner is still running a job"));
+        _time.Advance(TimeSpan.FromMinutes(11));
+
+        await Create().RunOnceAsync(TestContext.Current.CancellationToken);
+
+        await _runtime.DidNotReceiveWithAnyArgs().RemoveAsync(default!, TestContext.Current.CancellationToken);
+        _logger.AllText.Should().Contain("still running a job");
+    }
+
+    [Fact]
+    public async Task RunOnce_RunnerMissingTwoCyclesInARow_RemovesContainer()
+    {
+        _runtime.ListByLabelAsync("orchestrator.managed=true", Arg.Any<CancellationToken>()).Returns([Container("c1", "running", "slot-1")]);
+        _time.Advance(TimeSpan.FromMinutes(3));
+        var cycle = Create();
+
+        await cycle.RunOnceAsync(TestContext.Current.CancellationToken);
+        await _runtime.DidNotReceiveWithAnyArgs().RemoveAsync(default!, TestContext.Current.CancellationToken);
+        await cycle.RunOnceAsync(TestContext.Current.CancellationToken);
+
+        await _runtime.Received(1).RemoveAsync("c1", Arg.Any<CancellationToken>());
+        _logger.AllText.Should().Contain("had no runner on GitHub for two cycles");
+    }
+
+    [Fact]
+    public async Task RunOnce_OfflineOrchRunnerWithoutContainer_IsDeleted()
+    {
+        _api.ListRunnersAsync(Sandbox, Arg.Any<CancellationToken>()).Returns([
+            new SelfHostedRunner(30, "orch-gone", "offline", false),
+            new SelfHostedRunner(31, "vm-dev-1", "offline", false),
+        ]);
+
+        await Create().RunOnceAsync(TestContext.Current.CancellationToken);
+
+        await _api.Received(1).DeleteRunnerAsync(Sandbox, 30, Arg.Any<CancellationToken>());
+        await _api.DidNotReceive().DeleteRunnerAsync(Sandbox, 31, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunOnce_RepositoryRemovedFromList_StopsLaunchingButStillCleansUp()
+    {
+        QueueJobs(2);
+        _runtime.ListByLabelAsync("orchestrator.managed=true", Arg.Any<CancellationToken>()).Returns([Container("c1", "running", "slot-1")]);
+        _api.ListRunnersAsync(Sandbox, Arg.Any<CancellationToken>()).Returns([new SelfHostedRunner(7, "orch-c1", "online", false)]);
+        _repositories.CurrentValue = TestOptions.Repositories();
+        _time.Advance(TimeSpan.FromMinutes(11));
+
+        await Create().RunOnceAsync(TestContext.Current.CancellationToken);
+
+        await _runtime.DidNotReceiveWithAnyArgs().CreateAsync(default!, TestContext.Current.CancellationToken);
+        await _runtime.Received(1).RemoveAsync("c1", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunOnce_KilledRunnerStillBusyOnGitHub_LeavesRegistrationToTheSweep()
+    {
+        _runtime.ListByLabelAsync("orchestrator.managed=true", Arg.Any<CancellationToken>()).Returns([Container("c1", "exited", "slot-1")]);
+        _runtime.InspectAsync("c1", Arg.Any<CancellationToken>()).Returns(new ContainerState("exited", 137, null, null));
+        _api.DeleteRunnerAsync(Sandbox, 7, Arg.Any<CancellationToken>()).Returns<Task>(_ => throw new GitHubApiException(System.Net.HttpStatusCode.UnprocessableEntity, "DELETE", "/x", "currently running a job"));
+
+        await Create().RunOnceAsync(TestContext.Current.CancellationToken);
+
+        await _runtime.Received(1).RemoveAsync("c1", Arg.Any<CancellationToken>());
+        _logger.AllText.Should().Contain("the orphan sweep deletes it once GitHub releases it").And.NotContain("not fully removed");
+    }
+
     private void QueueJobs(int count)
     {
         _api.ListRunIdsAsync(Sandbox, "queued", Arg.Any<CancellationToken>()).Returns([9L]);
@@ -177,7 +268,7 @@ public sealed class PoolCycleTests
             new RepositoryGuard(_api, options, new ListLogger<RepositoryGuard>()),
             new RunnerLauncher(_api, _runtime, options, time, new ListLogger<RunnerLauncher>()),
             options,
-            TestOptions.Wrap(TestOptions.Repositories("thiagoluga/runner-pool-sandbox")),
+            _repositories,
             _logger);
     }
 }

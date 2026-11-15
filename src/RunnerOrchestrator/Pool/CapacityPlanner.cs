@@ -3,8 +3,8 @@ namespace RunnerOrchestrator.Pool;
 /// <summary>
 /// Pure decision of which repository gets which free slot (ADR 0005). A repository needs a
 /// runner for every queued job not already covered by one of its runners that has not picked a
-/// job yet. Free slots go one at a time to the repository with the fewest containers; ties keep
-/// the configuration order.
+/// job yet. Free slots go one at a time to the repository with the fewest containers; ties go to
+/// the repository whose oldest queued job has waited longest, then to the configuration order.
 /// </summary>
 internal static class CapacityPlanner
 {
@@ -29,6 +29,7 @@ internal static class CapacityPlanner
             var next = state
                 .Where(e => e.Need > 0 && (e.Demand.MaxConcurrent <= 0 || e.Running < e.Demand.MaxConcurrent))
                 .OrderBy(e => e.Running)
+                .ThenBy(e => e.Demand.OldestQueuedAt ?? DateTimeOffset.MaxValue)
                 .ThenBy(e => e.Order)
                 .FirstOrDefault();
             if (next is null)
@@ -59,7 +60,7 @@ internal static class CapacityPlanner
 /// <summary>A managed container that still holds its slot (any state but exited).</summary>
 internal sealed record PoolContainer(RepositoryName Repository, string Slot);
 
-/// <summary>Queued jobs the pool serves, and this repository's runners that have not picked a job yet.</summary>
-internal sealed record RepositoryDemand(RepositoryName Repository, int QueuedJobs, int WaitingRunners, int MaxConcurrent);
+/// <summary>Queued jobs the pool serves, this repository's runners that have not picked a job yet, and the oldest wait.</summary>
+internal sealed record RepositoryDemand(RepositoryName Repository, int QueuedJobs, int WaitingRunners, int MaxConcurrent, DateTimeOffset? OldestQueuedAt = null);
 
 internal sealed record LaunchDecision(RepositoryName Repository, string Slot);

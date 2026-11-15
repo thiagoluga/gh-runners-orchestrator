@@ -19,6 +19,9 @@ internal interface IGitHubRunnerApi
     Task DeleteRunnerAsync(RepositoryName repository, long runnerId, CancellationToken cancellationToken);
 
     Task<RepositoryInfo> GetRepositoryAsync(RepositoryName repository, CancellationToken cancellationToken);
+
+    /// <summary>Latest release of actions/runner, such as <c>2.338.2</c>.</summary>
+    Task<string> GetLatestRunnerVersionAsync(CancellationToken cancellationToken);
 }
 
 internal sealed record WorkflowJob(long Id, long RunId, string Status, IReadOnlyList<string> Labels, DateTimeOffset? CreatedAt);

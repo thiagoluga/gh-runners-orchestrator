@@ -97,6 +97,17 @@ internal sealed class GitHubRunnerApi(HttpClient http, IGitHubCredentialSource c
         return new RepositoryInfo(RepositoryName.Parse(response.FullName), response.Private, response.Owner.Login);
     }
 
+    public async Task<string> GetLatestRunnerVersionAsync(CancellationToken cancellationToken)
+    {
+        // A public repository outside the installation: read it without the installation token.
+        using var request = new HttpRequestMessage(HttpMethod.Get, "repos/actions/runner/releases/latest");
+        using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        await GitHubHttp.EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        var release = await response.Content.ReadFromJsonAsync(GitHubJsonContext.Default.ReleaseDto, cancellationToken).ConfigureAwait(false)
+            ?? throw new GitHubApiException("GitHub returned an empty release.");
+        return release.TagName.TrimStart('v');
+    }
+
     private async Task<T> GetAsync<T>(string path, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken)
     {
         using var request = await CreateRequestAsync(HttpMethod.Get, path, cancellationToken).ConfigureAwait(false);

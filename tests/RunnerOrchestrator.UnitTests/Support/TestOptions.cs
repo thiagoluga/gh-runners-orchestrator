@@ -33,4 +33,18 @@ internal static class TestOptions
 
     public static IOptions<T> Wrap<T>(T value)
         where T : class => Options.Create(value);
+
+    public static MutableOptionsMonitor<T> Monitor<T>(T value)
+        where T : class => new(value);
+}
+
+/// <summary>An options monitor whose value a test can replace, like a reloaded file.</summary>
+internal sealed class MutableOptionsMonitor<T>(T value) : IOptionsMonitor<T>
+    where T : class
+{
+    public T CurrentValue { get; set; } = value;
+
+    public T Get(string? name) => CurrentValue;
+
+    public IDisposable? OnChange(Action<T, string?> listener) => null;
 }
