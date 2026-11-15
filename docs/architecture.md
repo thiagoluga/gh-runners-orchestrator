@@ -1,6 +1,8 @@
 # Architecture
 
-Status: design. Nothing below is implemented yet; see [PLAN.md](../PLAN.md).
+Status: the proof of concept runs ([report](proof-of-concept.md)): GitHub App credentials,
+demand polling, repository guard, slot planning, launch and removal of finished runners.
+Idle timeout, orphan sweep and configuration reload come in phase 3; see [PLAN.md](../PLAN.md).
 
 ## What it does
 

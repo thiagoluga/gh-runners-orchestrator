@@ -1,0 +1,118 @@
+name: CI
+
+# GitHub-hosted runners only: this repository is public, and a fork's pull request must
+# never reach the self-hosted pool (docs/adr/0006-security-model.md).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  SONAR_ORGANIZATION: lugarini
+  SONAR_PROJECT_KEY: thiagoluga_gh-runners-orchestrator
+
+jobs:
+  build:
+    name: build and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            global.json
+            Directory.Packages.props
+            **/*.csproj
+            **/packages.lock.json
+      - name: Restore locked dependencies
+        run: dotnet restore GhRunnersOrchestrator.slnx --locked-mode
+      - name: Verify formatting
+        run: dotnet format GhRunnersOrchestrator.slnx --verify-no-changes --no-restore
+      - name: Build with SDK analyzers
+        run: dotnet build GhRunnersOrchestrator.slnx --configuration Release --no-restore --no-incremental
+      - name: Test with coverage
+        run: dotnet test GhRunnersOrchestrator.slnx --configuration Release --no-build --no-restore --collect:"XPlat Code Coverage;Format=cobertura,opencover" --results-directory artifacts/test-results --logger trx
+      - name: Upload test and coverage results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results
+          path: |
+            artifacts/test-results/**/*.trx
+            artifacts/test-results/**/coverage.opencover.xml
+          if-no-files-found: error
+          retention-days: 7
+
+  sonar:
+    name: SonarCloud analysis and Quality Gate
+    needs: build
+    # A fork's pull request gets no secrets; its analysis runs after the merge on main.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      - name: Check analysis configuration
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: test -n "$SONAR_TOKEN" || { echo "Configure the SONAR_TOKEN repository secret."; exit 1; }
+      - name: Install approved scanner
+        # LGPL-3.0 tooling, CI only; never part of an image (docs/adr/0003-stack-dotnet-worker-service.md).
+        run: dotnet tool install dotnet-sonarscanner --version 12.0.0 --tool-path "$RUNNER_TEMP/sonar-scanner"
+      - name: Retrieve test and coverage results
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: test-results
+          path: artifacts/test-results
+      - name: Restore locked dependencies
+        run: dotnet restore GhRunnersOrchestrator.slnx --locked-mode
+      - name: Analyze and wait for Quality Gate
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BRANCH: ${{ github.head_ref }}
+          PR_BASE: ${{ github.base_ref }}
+        run: |
+          args=("/k:$SONAR_PROJECT_KEY" "/o:$SONAR_ORGANIZATION"
+            "/d:sonar.token=$SONAR_TOKEN"
+            "/d:sonar.host.url=https://sonarcloud.io"
+            /d:sonar.scanner.scanAll=false
+            "/d:sonar.cs.opencover.reportsPaths=$GITHUB_WORKSPACE/artifacts/test-results/**/coverage.opencover.xml"
+            "/d:sonar.cs.vstest.reportsPaths=$GITHUB_WORKSPACE/artifacts/test-results/**/*.trx"
+            # The entry point only wires the host; the pieces it registers are tested one by one.
+            "/d:sonar.coverage.exclusions=**/Program.cs"
+            /d:sonar.qualitygate.wait=true /d:sonar.qualitygate.timeout=300)
+          if [ -n "$PR_NUMBER" ]; then
+            args+=("/d:sonar.pullrequest.key=$PR_NUMBER" "/d:sonar.pullrequest.branch=$PR_BRANCH" "/d:sonar.pullrequest.base=$PR_BASE")
+          else
+            args+=("/d:sonar.branch.name=${GITHUB_REF_NAME}")
+          fi
+          "$RUNNER_TEMP/sonar-scanner/dotnet-sonarscanner" begin "${args[@]}"
+          dotnet build GhRunnersOrchestrator.slnx --configuration Release --no-restore --no-incremental
+          "$RUNNER_TEMP/sonar-scanner/dotnet-sonarscanner" end "/d:sonar.token=$SONAR_TOKEN"
