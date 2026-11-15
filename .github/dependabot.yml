@@ -7,6 +7,13 @@ updates:
     groups:
       dotnet:
         patterns: ["*"]
+    ignore:
+      # Microsoft.Extensions.* follow the runtime: stay on the major of the target framework (net10.0).
+      - dependency-name: "Microsoft.Extensions.*"
+        update-types: ["version-update:semver-major"]
+      # xunit.v3 stays on 3.x for VSTest and Coverlet compatibility on SDK 10 (as saas-foundry).
+      - dependency-name: "xunit.v3"
+        update-types: ["version-update:semver-major"]
     open-pull-requests-limit: 3
   - package-ecosystem: github-actions
     directory: /
@@ -23,4 +30,11 @@ updates:
     groups:
       images:
         patterns: ["*"]
+    ignore:
+      # The runner image matches the GitHub-hosted ubuntu-24.04 the jobs were written for.
+      - dependency-name: "ubuntu"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # The SDK image follows global.json (10.0.300 feature band); a new band changes both together.
+      - dependency-name: "dotnet/sdk"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     open-pull-requests-limit: 3
