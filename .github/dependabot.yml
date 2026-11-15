@@ -35,6 +35,9 @@ updates:
       - dependency-name: "ubuntu"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
       # The SDK image follows global.json (10.0.300 feature band); a new band changes both together.
+      # A band is a patch number in semver terms (10.0.300 -> 10.0.404), so ignore it by version.
       - dependency-name: "dotnet/sdk"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "dotnet/sdk"
+        versions: [">= 10.0.400"]
     open-pull-requests-limit: 3
