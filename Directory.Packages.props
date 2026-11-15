@@ -10,7 +10,7 @@
   </ItemGroup>
   <ItemGroup Label="Tests">
     <!-- Test discovery and execution through VSTest. -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <!-- xUnit.net v3; stay on 3.x for VSTest/Coverlet compatibility on SDK 10 (as saas-foundry). -->
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <!-- xUnit's VSTest adapter, required by dotnet test and the coverage collector. -->
