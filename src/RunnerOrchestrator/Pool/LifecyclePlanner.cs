@@ -42,23 +42,19 @@ internal static class LifecyclePlanner
 
             var age = container.CreatedAt is { } created ? now - created : TimeSpan.Zero;
             var runner = runners.FirstOrDefault(r => string.Equals(r.Name, container.RunnerName, StringComparison.OrdinalIgnoreCase));
-            if (runner is not null)
+            switch (Classify(runner, age, suspects.Contains(container.ContainerId), idleTimeout, grace))
             {
-                if (!runner.Busy && age > idleTimeout)
-                {
+                case ContainerVerdict.Idle:
                     idle.Add(container);
-                }
-            }
-            else if (age > grace)
-            {
-                if (suspects.Contains(container.ContainerId))
-                {
+                    break;
+                case ContainerVerdict.Orphan:
                     orphanContainers.Add(container);
-                }
-                else
-                {
+                    break;
+                case ContainerVerdict.Suspect:
                     newSuspects.Add(container.ContainerId);
-                }
+                    break;
+                default:
+                    break;
             }
         }
 
@@ -72,6 +68,29 @@ internal static class LifecyclePlanner
             .ToList();
 
         return new LifecyclePlan(idle, orphanContainers, orphanRunners, newSuspects);
+    }
+
+    private static ContainerVerdict Classify(SelfHostedRunner? runner, TimeSpan age, bool wasSuspect, TimeSpan idleTimeout, TimeSpan grace)
+    {
+        if (runner is not null)
+        {
+            return !runner.Busy && age > idleTimeout ? ContainerVerdict.Idle : ContainerVerdict.Keep;
+        }
+
+        if (age <= grace)
+        {
+            return ContainerVerdict.Keep;
+        }
+
+        return wasSuspect ? ContainerVerdict.Orphan : ContainerVerdict.Suspect;
+    }
+
+    private enum ContainerVerdict
+    {
+        Keep,
+        Idle,
+        Suspect,
+        Orphan,
     }
 }
 
