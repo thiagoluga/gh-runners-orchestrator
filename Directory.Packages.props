@@ -6,13 +6,13 @@
   </PropertyGroup>
   <ItemGroup Label="Runtime">
     <!-- Generic Host, configuration and logging for the worker. -->
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.15" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="11.0.0" />
   </ItemGroup>
   <ItemGroup Label="Tests">
     <!-- Test discovery and execution through VSTest. -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <!-- xUnit.net v3; stay on 3.x for VSTest/Coverlet compatibility on SDK 10 (as saas-foundry). -->
-    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="xunit.v3" Version="4.0.3" />
     <!-- xUnit's VSTest adapter, required by dotnet test and the coverage collector. -->
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
     <!-- Coverage for Sonar. -->
@@ -22,6 +22,6 @@
     <!-- Substitutes for the GitHub and Docker boundaries. -->
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
     <!-- FakeTimeProvider for token expiry and timeouts. -->
-    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="11.0.0" />
   </ItemGroup>
 </Project>
