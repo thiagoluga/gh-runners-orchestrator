@@ -1,0 +1,5 @@
+# LF everywhere: the shell scripts and the runner image run on Linux, and a CRLF in an
+# entrypoint or a token file is a failure only the VM shows.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
