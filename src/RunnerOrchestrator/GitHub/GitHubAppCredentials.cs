@@ -23,12 +23,20 @@ internal sealed partial class GitHubAppCredentials(
     /// <summary>Renew this long before GitHub's one-hour expiry.</summary>
     public static readonly TimeSpan RenewBefore = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// How often to scope a new token while a configured repository is outside the current one,
+    /// so an App installed on it later is picked up without waiting for the hourly renewal.
+    /// </summary>
+    public static readonly TimeSpan UncoveredRescopeInterval = TimeSpan.FromMinutes(5);
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private RSA? _key;
     private long? _installationId;
     private string? _token;
     private DateTimeOffset _expiresAt;
     private string? _scopedFor;
+    private HashSet<string> _covered = new(StringComparer.OrdinalIgnoreCase);
+    private DateTimeOffset _scopedAt;
 
     public async Task<string> GetInstallationTokenAsync(CancellationToken cancellationToken)
     {
@@ -37,18 +45,29 @@ internal sealed partial class GitHubAppCredentials(
         {
             // A changed repository list (reloaded from its file) needs a token scoped to it.
             var configured = ConfiguredSignature();
-            if (_token is not null && _expiresAt - time.GetUtcNow() > RenewBefore && _scopedFor == configured)
+            var now = time.GetUtcNow();
+            var reason = RenewalReason(configured, now);
+            if (reason is null)
             {
-                return _token;
+                return _token!;
             }
 
-            var jwt = GitHubAppJwt.Create(options.Value.GitHubApp.AppId, LoadKey(), time.GetUtcNow());
+            var jwt = GitHubAppJwt.Create(options.Value.GitHubApp.AppId, LoadKey(), now);
             _installationId ??= await FindInstallationAsync(jwt, cancellationToken).ConfigureAwait(false);
-            var response = await CreateTokenAsync(jwt, _installationId.Value, cancellationToken).ConfigureAwait(false);
+            var (response, covered) = await CreateTokenAsync(jwt, _installationId.Value, cancellationToken).ConfigureAwait(false);
+            var previous = _token;
             _token = response.Token;
             _expiresAt = response.ExpiresAt;
             _scopedFor = configured;
-            LogTokenRenewed(logger, _installationId.Value, _expiresAt);
+            _covered = new HashSet<string>(covered, StringComparer.OrdinalIgnoreCase);
+            _scopedAt = now;
+            LogTokenRenewed(logger, _installationId.Value, _expiresAt, reason);
+            if (previous is not null)
+            {
+                // Calls of the pool run one after another, so nothing still holds the old token.
+                await RevokeAsync(previous, cancellationToken).ConfigureAwait(false);
+            }
+
             return _token!;
         }
         finally
@@ -108,7 +127,7 @@ internal sealed partial class GitHubAppCredentials(
         return installation.Id;
     }
 
-    private async Task<AccessTokenResponse> CreateTokenAsync(string jwt, long installationId, CancellationToken cancellationToken)
+    private async Task<(AccessTokenResponse Response, string[] Covered)> CreateTokenAsync(string jwt, long installationId, CancellationToken cancellationToken)
     {
         // Scope to the owner's repositories the installation covers, which by ADR 0002 are the
         // enabled ones. Not to the configured list: a repository removed from the list still has
@@ -125,7 +144,8 @@ internal sealed partial class GitHubAppCredentials(
             throw new GitHubApiException($"The App installation covers no repository of {owner}.");
         }
 
-        return await RequestTokenAsync(jwt, installationId, new AccessTokenRequest(names, new AccessTokenPermissions(Actions: "read", Administration: "write", Metadata: "read")), cancellationToken).ConfigureAwait(false);
+        var response = await RequestTokenAsync(jwt, installationId, new AccessTokenRequest(names, new AccessTokenPermissions(Actions: "read", Administration: "write", Metadata: "read")), cancellationToken).ConfigureAwait(false);
+        return (response, names);
     }
 
     private async Task<List<RepositoryName>> ListInstalledRepositoriesAsync(string jwt, long installationId, CancellationToken cancellationToken)
@@ -133,9 +153,23 @@ internal sealed partial class GitHubAppCredentials(
         // A metadata-only token is enough to list what the installation covers.
         var metadata = await RequestTokenAsync(jwt, installationId, new AccessTokenRequest(null, new AccessTokenPermissions(null, null, Metadata: "read")), cancellationToken).ConfigureAwait(false);
         var installed = new List<RepositoryName>();
+        try
+        {
+            await ReadInstalledPagesAsync(metadata.Token!, installed, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await RevokeAsync(metadata.Token!, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        return installed;
+    }
+
+    private async Task ReadInstalledPagesAsync(string metadataToken, List<RepositoryName> installed, CancellationToken cancellationToken)
+    {
         for (var page = 1; page <= GitHubRunnerApi.MaxPages; page++)
         {
-            using var request = GitHubHttp.Request(HttpMethod.Get, string.Create(CultureInfo.InvariantCulture, $"installation/repositories?per_page={GitHubRunnerApi.PageSize}&page={page}"), metadata.Token!);
+            using var request = GitHubHttp.Request(HttpMethod.Get, string.Create(CultureInfo.InvariantCulture, $"installation/repositories?per_page={GitHubRunnerApi.PageSize}&page={page}"), metadataToken);
             using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
             await GitHubHttp.EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
             var list = await response.Content.ReadFromJsonAsync(GitHubJsonContext.Default.InstallationRepositoriesResponse, cancellationToken).ConfigureAwait(false);
@@ -146,13 +180,71 @@ internal sealed partial class GitHubAppCredentials(
                 break;
             }
         }
+    }
 
-        return installed;
+    /// <summary>Best effort: a token left valid only expires on its own within the hour.</summary>
+    private async Task RevokeAsync(string token, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var request = GitHubHttp.Request(HttpMethod.Delete, "installation/token", token);
+            using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                LogRevokeFailed(logger, (int)response.StatusCode);
+            }
+        }
+        catch (HttpRequestException exception)
+        {
+            LogRevokeFailed(logger, (int?)exception.StatusCode ?? 0);
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // HttpClient timeout: the new token is already in hand, so do not fail for this.
+            LogRevokeFailed(logger, 0);
+        }
     }
 
     /// <summary>A changed list may follow a new installation; renewing picks it up at once.</summary>
     private string ConfiguredSignature() =>
         string.Join('|', repositories.CurrentValue.Repositories.Select(r => r.Name.ToLowerInvariant()).Order(StringComparer.Ordinal));
+
+    /// <summary>Why the token must be scoped again now, or null to keep it.</summary>
+    private string? RenewalReason(string configured, DateTimeOffset now)
+    {
+        if (_token is null)
+        {
+            return "first token";
+        }
+
+        if (_expiresAt - now <= RenewBefore)
+        {
+            return "close to expiry";
+        }
+
+        if (_scopedFor != configured)
+        {
+            return "repository list changed";
+        }
+
+        return UncoveredRescopeDue(now) ? "a listed repository is outside the token" : null;
+    }
+
+    /// <summary>A configured repository of the owner the token does not cover, and the last scope is old enough.</summary>
+    private bool UncoveredRescopeDue(DateTimeOffset now)
+    {
+        if (now - _scopedAt < UncoveredRescopeInterval)
+        {
+            return false;
+        }
+
+        var owner = options.Value.Owner;
+        return repositories.CurrentValue.Repositories
+            .Select(r => RepositoryName.TryParse(r.Name))
+            .OfType<RepositoryName>()
+            .Any(name => string.Equals(name.Owner, owner, StringComparison.OrdinalIgnoreCase) && !_covered.Contains(name.Name));
+    }
+
     private async Task<AccessTokenResponse> RequestTokenAsync(string jwt, long installationId, AccessTokenRequest body, CancellationToken cancellationToken)
     {
         using var request = GitHubHttp.Request(HttpMethod.Post, $"app/installations/{installationId}/access_tokens", jwt);
@@ -168,6 +260,9 @@ internal sealed partial class GitHubAppCredentials(
         return token;
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Installation token renewed for installation {InstallationId}, valid until {ExpiresAt:O}")]
-    private static partial void LogTokenRenewed(ILogger logger, long installationId, DateTimeOffset expiresAt);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Installation token renewed for installation {InstallationId}, valid until {ExpiresAt:O} ({Reason})")]
+    private static partial void LogTokenRenewed(ILogger logger, long installationId, DateTimeOffset expiresAt, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Revoking a replaced installation token failed (status {Status}); it expires on its own within the hour")]
+    private static partial void LogRevokeFailed(ILogger logger, int status);
 }
