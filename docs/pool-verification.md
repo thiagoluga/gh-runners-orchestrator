@@ -59,6 +59,27 @@ same way on `vm-dev-1` (run 43727251273), so the cause is the Sonar project, not
 on a manually dispatched branch is refused by the plan ("not allowed to access data from non
 main branches").
 
+## vm-dev-1 retired
+
+[#19](https://github.com/thiagoluga/gh-runners-orchestrator/issues/19), on 2026-11-15, after
+Thiago's confirmation:
+
+- `RunnerLabels` on `gh-runner-2` became `["vm-pool", "vm-dev"]`, then the orchestrator was
+  restarted while idle.
+- The three `vm-dev` registrations of saas-foundry (`vm-dev-1` offline, `vm-dev-2` and
+  `vm-dev-3` offline since earlier) were deleted.
+- saas-foundry `CI_RUNNER` went back to `vm-dev`, and its `docs/ci-runners.md` now points here.
+- The VM at `192.168.68.50` was already off and did not answer, so its runner container and
+  the volumes `saas-foundry-runners_state-1` and `saas-foundry-runners_work-1` are still on
+  its disk. They are harmless without a registration; remove them, or the VM, when it is
+  next up.
+
+The first saas-foundry runs on the pool after `vm-pool` failed in `foundation container images`:
+the runner image had no Docker Compose plugin. It was added with Buildx
+([#38](https://github.com/thiagoluga/gh-runners-orchestrator/pull/38)) and pulled on the host.
+Then saas-foundry PR #12 (run 43755390367, attempt 2) ran green with `CI_RUNNER=vm-dev`, Sonar
+included: 13:32 wall clock.
+
 ## Two repositories sharing the slots
 
 [#13](https://github.com/thiagoluga/gh-runners-orchestrator/issues/13), on 2026-11-15, with

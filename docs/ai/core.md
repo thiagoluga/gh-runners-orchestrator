@@ -21,7 +21,9 @@ or third-party repositories, autoscaling of hosts.
 3. **Nothing is "working" until it ran for real** and the result line was read. Report
    what was measured, what was not verified, and what needs Thiago's decision.
 4. **This repository's CI runs only on GitHub-hosted runners.** It is public.
-5. **The current runner `vm-dev-1` stays untouched** until [#19](https://github.com/thiagoluga/gh-runners-orchestrator/issues/19).
+5. **saas-foundry's CI depends on the pool** since `vm-dev-1` was retired
+   ([#19](https://github.com/thiagoluga/gh-runners-orchestrator/issues/19)): a host change that
+   stops the pool stops that CI. Its fallback is `CI_RUNNER=gh` there.
 6. **Confirm before destructive actions** on the host (removing containers, volumes,
    runner registrations not created by the orchestrator, `docker system prune`).
 7. Capacity uses `cpuset` and memory limits, **never a CPU quota** (measured to throttle).
@@ -49,8 +51,8 @@ or third-party repositories, autoscaling of hosts.
 The pool runs on its own VM, `gh-runner-2`: Ubuntu 24.04 on Hyper-V, 16 vCPUs, 40 GiB of fixed memory,
 static `192.168.68.66/22`, Docker Engine 29 (`nofile` 65536 by default, cgroup v2), user
 `ci` with passwordless sudo, SSH by key only:
-`ssh -i ~/.ssh/ci_vm_ed25519 ci@192.168.68.66`. The old VM `192.168.68.50` runs `vm-dev-1`
-and is not touched (rule 5). From Windows, use SSH from PowerShell;
+`ssh -i ~/.ssh/ci_vm_ed25519 ci@192.168.68.66`. The old VM `192.168.68.50` (`vm-dev-1`) is
+retired and was off at the time; its runner container and volumes may still be on its disk. From Windows, use SSH from PowerShell;
 send scripts by `scp` and run them with `bash file < /dev/null` (piped scripts get CRLF and
 `docker exec -i` swallows stdin). Do not hammer the SSH port with polling.
 
