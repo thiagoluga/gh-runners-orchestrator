@@ -6,13 +6,19 @@ public readonly record struct RepositoryName(string Owner, string Name)
     public static RepositoryName Parse(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
-        var parts = value.Split('/');
-        if (parts.Length != 2 || !parts.All(IsValidSegment))
+        return TryParse(value) ?? throw new FormatException($"'{value}' is not an owner/name repository.");
+    }
+
+    /// <summary>The parsed name, or null when the value is not <c>owner/name</c>.</summary>
+    public static RepositoryName? TryParse(string? value)
+    {
+        if (value is null)
         {
-            throw new FormatException($"'{value}' is not an owner/name repository.");
+            return null;
         }
 
-        return new RepositoryName(parts[0], parts[1]);
+        var parts = value.Split('/');
+        return parts.Length == 2 && parts.All(IsValidSegment) ? new RepositoryName(parts[0], parts[1]) : null;
     }
 
     public bool Equals(RepositoryName other) =>

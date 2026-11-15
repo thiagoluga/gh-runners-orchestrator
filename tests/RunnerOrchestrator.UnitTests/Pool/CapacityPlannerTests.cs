@@ -66,6 +66,18 @@ public sealed class CapacityPlannerTests
     }
 
     [Fact]
+    public void Plan_EqualContainers_FavorsTheOldestWaitingJob()
+    {
+        var older = new DateTimeOffset(2026, 11, 15, 11, 0, 0, TimeSpan.Zero);
+        var decisions = CapacityPlanner.Plan(
+            ["slot-1"],
+            [],
+            [new RepositoryDemand(Alpha, 1, 0, 0, older.AddMinutes(5)), new RepositoryDemand(Beta, 1, 0, 0, older)]);
+
+        decisions.Should().Equal(new LaunchDecision(Beta, "slot-1"));
+    }
+
+    [Fact]
     public void Plan_MaxConcurrentReached_LeavesSlotsFree()
     {
         var decisions = CapacityPlanner.Plan(TwoSlots, [new PoolContainer(Alpha, "slot-1")], [new RepositoryDemand(Alpha, 4, 0, 1)]);

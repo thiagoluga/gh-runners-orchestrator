@@ -39,12 +39,7 @@ internal sealed partial class RepositoryGuard(
 
     private async Task<string?> CheckAsync(string configuredName, CancellationToken cancellationToken)
     {
-        RepositoryName name;
-        try
-        {
-            name = RepositoryName.Parse(configuredName);
-        }
-        catch (FormatException)
+        if (RepositoryName.TryParse(configuredName) is not { } name)
         {
             return "not an owner/name repository";
         }

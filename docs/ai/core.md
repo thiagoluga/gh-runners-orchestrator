@@ -62,6 +62,8 @@ send scripts by `scp` and run them with `bash file < /dev/null` (piped scripts g
 | Security model | [ADR 0006](../adr/0006-security-model.md) |
 | Maintainer steps (App, Sonar, toy repository) | [docs/maintainer-setup.md](../maintainer-setup.md) |
 | Proof of concept: measured results | [docs/proof-of-concept.md](../proof-of-concept.md) |
+| Operations (install, enable, update, rotate) | [docs/operations.md](../operations.md) |
+| Runner pool verification | [docs/pool-verification.md](../pool-verification.md) |
 | Contribution rules | [CONTRIBUTING.md](../../CONTRIBUTING.md) |
 
 ## Operational lessons

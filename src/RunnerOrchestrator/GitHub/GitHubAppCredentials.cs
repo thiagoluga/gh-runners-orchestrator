@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
@@ -15,7 +16,7 @@ namespace RunnerOrchestrator.GitHub;
 internal sealed partial class GitHubAppCredentials(
     HttpClient http,
     IOptions<OrchestratorOptions> options,
-    IOptions<RepositoryListOptions> repositories,
+    IOptionsMonitor<RepositoryListOptions> repositories,
     TimeProvider time,
     ILogger<GitHubAppCredentials> logger) : IGitHubCredentialSource, IDisposable
 {
@@ -27,13 +28,16 @@ internal sealed partial class GitHubAppCredentials(
     private long? _installationId;
     private string? _token;
     private DateTimeOffset _expiresAt;
+    private string? _scopedFor;
 
     public async Task<string> GetInstallationTokenAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_token is not null && _expiresAt - time.GetUtcNow() > RenewBefore)
+            // A changed repository list (reloaded from its file) needs a token scoped to it.
+            var configured = ConfiguredSignature();
+            if (_token is not null && _expiresAt - time.GetUtcNow() > RenewBefore && _scopedFor == configured)
             {
                 return _token;
             }
@@ -43,6 +47,7 @@ internal sealed partial class GitHubAppCredentials(
             var response = await CreateTokenAsync(jwt, _installationId.Value, cancellationToken).ConfigureAwait(false);
             _token = response.Token;
             _expiresAt = response.ExpiresAt;
+            _scopedFor = configured;
             LogTokenRenewed(logger, _installationId.Value, _expiresAt);
             return _token!;
         }
@@ -105,49 +110,49 @@ internal sealed partial class GitHubAppCredentials(
 
     private async Task<AccessTokenResponse> CreateTokenAsync(string jwt, long installationId, CancellationToken cancellationToken)
     {
-        // Scope only to configured repositories the installation covers: asking for one it does
-        // not cover fails the whole request, which would stop the pool for every repository.
-        // RepositoryGuard then refuses, and logs, the uncovered ones.
-        var installed = await ListInstalledRepositoriesAsync(jwt, installationId, cancellationToken).ConfigureAwait(false);
+        // Scope to the owner's repositories the installation covers, which by ADR 0002 are the
+        // enabled ones. Not to the configured list: a repository removed from the list still has
+        // runners to clean up, and asking for one the installation does not cover would fail the
+        // whole request. RepositoryGuard decides which repositories get new runners.
         var owner = options.Value.Owner;
-        var names = repositories.Value.Repositories
-            .Select(r => TryParse(r.Name))
-            .OfType<RepositoryName>()
-            .Where(name => string.Equals(name.Owner, owner, StringComparison.OrdinalIgnoreCase) && installed.Contains(name))
+        var names = (await ListInstalledRepositoriesAsync(jwt, installationId, cancellationToken).ConfigureAwait(false))
+            .Where(name => string.Equals(name.Owner, owner, StringComparison.OrdinalIgnoreCase))
             .Select(name => name.Name)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         if (names.Length == 0)
         {
-            throw new GitHubApiException("None of the configured repositories is covered by the App installation.");
+            throw new GitHubApiException($"The App installation covers no repository of {owner}.");
         }
 
         return await RequestTokenAsync(jwt, installationId, new AccessTokenRequest(names, new AccessTokenPermissions(Actions: "read", Administration: "write", Metadata: "read")), cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<HashSet<RepositoryName>> ListInstalledRepositoriesAsync(string jwt, long installationId, CancellationToken cancellationToken)
+    private async Task<List<RepositoryName>> ListInstalledRepositoriesAsync(string jwt, long installationId, CancellationToken cancellationToken)
     {
         // A metadata-only token is enough to list what the installation covers.
         var metadata = await RequestTokenAsync(jwt, installationId, new AccessTokenRequest(null, new AccessTokenPermissions(null, null, Metadata: "read")), cancellationToken).ConfigureAwait(false);
-        using var request = GitHubHttp.Request(HttpMethod.Get, "installation/repositories?per_page=100", metadata.Token!);
-        using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        await GitHubHttp.EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
-        var list = await response.Content.ReadFromJsonAsync(GitHubJsonContext.Default.InstallationRepositoriesResponse, cancellationToken).ConfigureAwait(false);
-        return [.. (list?.Repositories ?? []).Select(r => TryParse(r.FullName)).OfType<RepositoryName>()];
+        var installed = new List<RepositoryName>();
+        for (var page = 1; page <= GitHubRunnerApi.MaxPages; page++)
+        {
+            using var request = GitHubHttp.Request(HttpMethod.Get, string.Create(CultureInfo.InvariantCulture, $"installation/repositories?per_page={GitHubRunnerApi.PageSize}&page={page}"), metadata.Token!);
+            using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            await GitHubHttp.EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+            var list = await response.Content.ReadFromJsonAsync(GitHubJsonContext.Default.InstallationRepositoriesResponse, cancellationToken).ConfigureAwait(false);
+            var repositoriesOnPage = list?.Repositories ?? [];
+            installed.AddRange(repositoriesOnPage.Select(r => RepositoryName.TryParse(r.FullName)).OfType<RepositoryName>());
+            if (repositoriesOnPage.Count < GitHubRunnerApi.PageSize)
+            {
+                break;
+            }
+        }
+
+        return installed;
     }
 
-    private static RepositoryName? TryParse(string value)
-    {
-        try
-        {
-            return RepositoryName.Parse(value);
-        }
-        catch (FormatException)
-        {
-            return null;
-        }
-    }
-
+    /// <summary>A changed list may follow a new installation; renewing picks it up at once.</summary>
+    private string ConfiguredSignature() =>
+        string.Join('|', repositories.CurrentValue.Repositories.Select(r => r.Name.ToLowerInvariant()).Order(StringComparer.Ordinal));
     private async Task<AccessTokenResponse> RequestTokenAsync(string jwt, long installationId, AccessTokenRequest body, CancellationToken cancellationToken)
     {
         using var request = GitHubHttp.Request(HttpMethod.Post, $"app/installations/{installationId}/access_tokens", jwt);

@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Time.Testing;
+using RunnerOrchestrator.Configuration;
 using RunnerOrchestrator.GitHub;
 using RunnerOrchestrator.UnitTests.Support;
 
@@ -15,6 +16,25 @@ public sealed class GitHubAppCredentialsTests : IDisposable
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 15, 12, 0, 0, TimeSpan.Zero));
     private readonly FakeHttpHandler _handler = new();
     private readonly ListLogger<GitHubAppCredentials> _logger = new();
+    private MutableOptionsMonitor<RepositoryListOptions>? _repositories;
+    private string _installed = """{"repositories":[{"full_name":"thiagoluga/runner-pool-sandbox","private":true,"owner":{"login":"thiagoluga"}},{"full_name":"thiagoluga/other","private":true,"owner":{"login":"thiagoluga"}},{"full_name":"someone/else","private":true,"owner":{"login":"someone"}}]}""";
+
+    [Fact]
+    public async Task GetInstallationToken_RepositoryListReloaded_RescopesBeforeExpiry()
+    {
+        _repositories = TestOptions.Monitor(TestOptions.Repositories("thiagoluga/runner-pool-sandbox"));
+        using var credentials = Create();
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+
+        _repositories.CurrentValue = TestOptions.Repositories("thiagoluga/runner-pool-sandbox", "thiagoluga/other");
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+
+        var scoped = ScopedTokenRequests().ToList();
+        scoped.Should().HaveCount(2);
+        using var body = JsonDocument.Parse(scoped[1].Body!);
+        body.RootElement.GetProperty("repositories").EnumerateArray().Select(e => e.GetString()).Should().Equal("runner-pool-sandbox", "other");
+    }
 
     public GitHubAppCredentialsTests()
     {
@@ -25,12 +45,11 @@ public sealed class GitHubAppCredentialsTests : IDisposable
             .On(HttpMethod.Post, "/app/installations/42/access_tokens", request => FakeHttpHandler.Json(
                 HttpStatusCode.Created,
                 $$"""{"token":"{{(IsScoped(request) ? Token : MetadataToken)}}","expires_at":"{{_time.GetUtcNow().AddHours(1):O}}"}"""))
-            .On(HttpMethod.Get, "/installation/repositories", HttpStatusCode.OK,
-                """{"total_count":2,"repositories":[{"full_name":"thiagoluga/runner-pool-sandbox","private":true,"owner":{"login":"thiagoluga"}},{"full_name":"thiagoluga/other","private":true,"owner":{"login":"thiagoluga"}}]}""");
+            .On(HttpMethod.Get, "/installation/repositories", _ => FakeHttpHandler.Json(HttpStatusCode.OK, _installed));
     }
 
     [Fact]
-    public async Task GetInstallationToken_FirstCall_ScopesTokenToListedRepositoriesAndPoolPermissions()
+    public async Task GetInstallationToken_FirstCall_ScopesTokenToInstalledRepositoriesOfOwnerAndPoolPermissions()
     {
         using var credentials = Create();
 
@@ -41,7 +60,7 @@ public sealed class GitHubAppCredentialsTests : IDisposable
         var tokenRequest = ScopedTokenRequests().Single();
         tokenRequest.Authorization.Should().StartWith("Bearer ey");
         using var body = JsonDocument.Parse(tokenRequest.Body!);
-        body.RootElement.GetProperty("repositories").EnumerateArray().Select(e => e.GetString()).Should().Equal("runner-pool-sandbox");
+        body.RootElement.GetProperty("repositories").EnumerateArray().Select(e => e.GetString()).Should().Equal("runner-pool-sandbox", "other");
         var permissions = body.RootElement.GetProperty("permissions");
         permissions.GetProperty("actions").GetString().Should().Be("read");
         permissions.GetProperty("administration").GetString().Should().Be("write");
@@ -61,24 +80,25 @@ public sealed class GitHubAppCredentialsTests : IDisposable
     }
 
     [Fact]
-    public async Task GetInstallationToken_ListedRepositoryNotInstalled_IsLeftOutOfTheScope()
+    public async Task GetInstallationToken_RepositoryRemovedFromList_StaysInScopeForCleanup()
     {
-        using var credentials = Create("thiagoluga/runner-pool-sandbox", "thiagoluga/not-installed", "someone/else");
+        using var credentials = Create("thiagoluga/not-installed");
 
         await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
 
         using var body = JsonDocument.Parse(ScopedTokenRequests().Single().Body!);
-        body.RootElement.GetProperty("repositories").EnumerateArray().Select(e => e.GetString()).Should().Equal("runner-pool-sandbox");
+        body.RootElement.GetProperty("repositories").EnumerateArray().Select(e => e.GetString()).Should().Equal("runner-pool-sandbox", "other");
     }
 
     [Fact]
-    public async Task GetInstallationToken_NoListedRepositoryInstalled_FailsWithoutScopedRequest()
+    public async Task GetInstallationToken_InstallationHasNoRepositoryOfOwner_FailsWithoutScopedRequest()
     {
-        using var credentials = Create("thiagoluga/not-installed");
+        _installed = """{"repositories":[{"full_name":"someone/else","private":true,"owner":{"login":"someone"}}]}""";
+        using var credentials = Create();
 
         var act = async () => await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
 
-        (await act.Should().ThrowAsync<GitHubApiException>()).WithMessage("*None of the configured repositories*");
+        (await act.Should().ThrowAsync<GitHubApiException>()).WithMessage("*covers no repository of thiagoluga*");
         ScopedTokenRequests().Should().BeEmpty();
     }
 
@@ -160,7 +180,7 @@ public sealed class GitHubAppCredentialsTests : IDisposable
     private GitHubAppCredentials Create(params string[] repositories) => new(
         GitHubHttp.CreateClient(new Uri("https://api.github.test/"), _handler),
         TestOptions.Wrap(TestOptions.Orchestrator(_keyPath)),
-        TestOptions.Wrap(TestOptions.Repositories(repositories.Length == 0 ? ["thiagoluga/runner-pool-sandbox"] : repositories)),
+        _repositories ?? TestOptions.Monitor(TestOptions.Repositories(repositories.Length == 0 ? ["thiagoluga/runner-pool-sandbox"] : repositories)),
         _time,
         _logger);
 }

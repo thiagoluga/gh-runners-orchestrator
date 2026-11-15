@@ -11,9 +11,14 @@ using RunnerOrchestrator.Pool;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// The repository list is its own file (docs/architecture.md); its path can be overridden.
+// Host settings (slots, labels, image) come from one file; changing them needs a restart.
+// The repository list is its own file and is reloaded on change (docs/architecture.md).
+// Environment variables still win over both.
+var settingsFile = builder.Configuration["SettingsFile"] ?? "orchestrator.json";
 var repositoriesFile = builder.Configuration["RepositoriesFile"] ?? "repositories.json";
-builder.Configuration.AddJsonFile(repositoriesFile, optional: true, reloadOnChange: true);
+builder.Configuration.AddJsonFile(Path.GetFullPath(settingsFile), optional: true, reloadOnChange: false);
+builder.Configuration.AddJsonFile(Path.GetFullPath(repositoriesFile), optional: true, reloadOnChange: true);
+builder.Configuration.AddEnvironmentVariables();
 
 builder.Logging.AddSimpleConsole(console =>
 {
@@ -39,5 +44,6 @@ builder.Services.AddSingleton<RepositoryGuard>();
 builder.Services.AddSingleton<RunnerLauncher>();
 builder.Services.AddSingleton<PoolCycle>();
 builder.Services.AddHostedService<OrchestratorWorker>();
+builder.Services.AddHostedService<RunnerVersionWatch>();
 
 await builder.Build().RunAsync().ConfigureAwait(false);

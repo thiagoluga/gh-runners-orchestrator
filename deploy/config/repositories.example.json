@@ -1,0 +1,5 @@
+{
+  "Repositories": [
+    { "Name": "thiagoluga/runner-pool-sandbox", "MaxConcurrent": 2 }
+  ]
+}

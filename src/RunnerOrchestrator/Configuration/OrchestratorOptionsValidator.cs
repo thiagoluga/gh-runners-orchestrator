@@ -19,6 +19,11 @@ internal sealed class OrchestratorOptionsValidator : IValidateOptions<Orchestrat
             errors.Add("Orchestrator:PollInterval must be at least 5 seconds.");
         }
 
+        if (options.IdleRunnerTimeout < TimeSpan.FromMinutes(1))
+        {
+            errors.Add("Orchestrator:IdleRunnerTimeout must be at least 1 minute.");
+        }
+
         if (options.RunnerLabels.Count == 0 || options.RunnerLabels.Any(string.IsNullOrWhiteSpace))
         {
             errors.Add("Orchestrator:RunnerLabels needs at least one non-empty label.");
