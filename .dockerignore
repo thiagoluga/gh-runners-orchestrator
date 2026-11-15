@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/TestResults/
+artifacts/
+.git/
+.github/
+.vs/
+docs/
+runner/
+tests/
+*.pem
+.env

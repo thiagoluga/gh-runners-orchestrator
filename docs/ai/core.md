@@ -61,6 +61,7 @@ send scripts by `scp` and run them with `bash file < /dev/null` (piped scripts g
 | Ordered work and risks | [PLAN.md](../../PLAN.md) |
 | Security model | [ADR 0006](../adr/0006-security-model.md) |
 | Maintainer steps (App, Sonar, toy repository) | [docs/maintainer-setup.md](../maintainer-setup.md) |
+| Proof of concept: measured results | [docs/proof-of-concept.md](../proof-of-concept.md) |
 | Contribution rules | [CONTRIBUTING.md](../../CONTRIBUTING.md) |
 
 ## Operational lessons
@@ -77,3 +78,6 @@ Numbered, dated, never rewritten.
    failed with "New-line characters are not allowed in header values".
 5. (2026-11-15, inherited) Uploading 12 MB of artifacts from the VM stalled for 27 minutes
    (uplink about 90 KB/s). Build images in CI and pull them on the host.
+6. (2026-11-15) The account has no GitHub-hosted minutes for private repositories: a job on
+   `ubuntu-24.04` in the sandbox is refused at once. Private repositories run every job on
+   the pool; this public repository's CI is unaffected.

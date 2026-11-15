@@ -49,6 +49,7 @@ errors, Sonar).
 | `Microsoft.Extensions.TimeProvider.Testing` | `FakeTimeProvider` |
 | `coverlet.collector` | coverage for Sonar |
 | `Microsoft.NET.Test.Sdk` | test host |
+| `xunit.runner.visualstudio` | **Pending Thiago's approval.** xUnit's own VSTest adapter: `dotnet test` with `coverlet.collector` finds no tests without it (same as saas-foundry). Added with the scaffolding on 2026-11-15 and flagged in its pull request |
 | `dotnet-sonarscanner` (tool) | Sonar analysis in CI |
 
 Versions and actual licenses (including transitive ones) are checked when each package

@@ -1,0 +1,11 @@
+bin/
+obj/
+artifacts/
+TestResults/
+.vs/
+.idea/
+*.user
+.env
+*.pem
+appsettings.Local.json
+repositories.Local.json

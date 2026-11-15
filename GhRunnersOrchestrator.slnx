@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/02 - Hosts/">
+    <Project Path="src/RunnerOrchestrator/RunnerOrchestrator.csproj" />
+  </Folder>
+  <Folder Name="/06 - Tests/">
+    <Project Path="tests/RunnerOrchestrator.UnitTests/RunnerOrchestrator.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/99 - Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="Dockerfile" />
+    <File Path="runner/Dockerfile" />
+    <File Path="runner/entrypoint.sh" />
+    <File Path=".github/workflows/ci.yml" />
+    <File Path=".github/workflows/codeql.yml" />
+    <File Path=".github/workflows/images.yml" />
+    <File Path="README.md" />
+    <File Path="PLAN.md" />
+  </Folder>
+</Solution>
