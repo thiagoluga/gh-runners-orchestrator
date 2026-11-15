@@ -1,0 +1,42 @@
+name: Bug report
+description: The orchestrator did something wrong on a real host.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Redact before pasting.** No private key, installation token (`ghs_...`), JIT configuration or registration token.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The workflow (`runs-on`), the slot configuration, and the steps.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Orchestrator log and container state
+      description: The relevant log lines and `docker ps -a --filter label=orchestrator.managed=true`.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Orchestrator image tag and runner version.
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Host
+      description: OS, Docker Engine version, cores and memory.
+    validations:
+      required: true

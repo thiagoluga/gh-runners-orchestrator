@@ -1,0 +1,11 @@
+# Who gets asked to review a change. Review is not required to merge (one maintainer);
+# this makes the request automatic.
+
+*                       @thiagoluga
+
+# Where a mistake leaks a credential or hands a job the host.
+/runner/                @thiagoluga
+/deploy/                @thiagoluga
+/.github/workflows/     @thiagoluga
+/docs/adr/              @thiagoluga
+/SECURITY.md            @thiagoluga
