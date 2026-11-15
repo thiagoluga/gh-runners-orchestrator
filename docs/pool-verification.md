@@ -15,15 +15,22 @@ the test) against `thiagoluga/runner-pool-sandbox`.
 | Orchestrator restart mid-job | `docker compose restart` while a job ran | the job kept running; the new process rebuilt the pool from labels (`1/2 slots taken`) |
 | Runner killed mid-job | `docker kill` of the runner container | exited container removed with exit code 137; GitHub kept the runner busy until it gave the job up, refused the delete (422), then removed the registration itself |
 
-## Not verified here
+## After the merge
+
+| Case | How | Result |
+|---|---|---|
+| Fresh install from `main` ([#16](https://github.com/thiagoluga/gh-runners-orchestrator/issues/16)) | the verification deployment and its images removed, then only the commands of [operations.md](operations.md) (`curl` from `main`, `DOCKER_GID`, `docker compose pull && up -d`) | `ghcr.io/thiagoluga/gh-runners-orchestrator:main` pulled without login; token renewed; cycles running |
+| Host reboot mid-job | `sudo systemctl reboot` 20 s into a long job | the orchestrator came back with Docker; the interrupted runner (exit code 143) was removed on the first cycle; the job failed on GitHub; a `smoke` run right after went green in 30 s; no registration left |
+| Runner version workflow ([#17](https://github.com/thiagoluga/gh-runners-orchestrator/issues/17)) | dispatched with `base` set to a branch pinning runner 2.337.0 | detected 2.337.0 < 2.338.2, downloaded the release, computed the same SHA-256 as the known-good pin, pushed `chore/runner-2.338.2`; **opening the pull request was refused** ("GitHub Actions is not permitted to create or approve pull requests") |
+
+## Not verified
 
 - **Two repositories sharing the slots** ([#13](https://github.com/thiagoluga/gh-runners-orchestrator/issues/13)):
-  needs a second private repository with the App installed, which is a maintainer step. The
-  rule is covered by unit tests (`CapacityPlannerTests`).
-- **Fresh install from `main` and host reboot** ([#16](https://github.com/thiagoluga/gh-runners-orchestrator/issues/16)):
-  needs the published orchestrator image of this phase, so it runs after the merge.
-- **Runner version workflow** ([#17](https://github.com/thiagoluga/gh-runners-orchestrator/issues/17)):
-  runs from `main` only; checked after the merge against a deliberately old pin.
+  needs a second private repository with the App installed, a maintainer step. The rule is
+  covered by unit tests (`CapacityPlannerTests`).
+- **The version workflow opening its pull request**: needs the repository setting
+  *Settings → Actions → General → Allow GitHub Actions to create and approve pull requests*,
+  a maintainer decision.
 
 ## Observed
 
