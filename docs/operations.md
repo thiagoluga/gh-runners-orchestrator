@@ -56,8 +56,9 @@ Expect `Installation token renewed …` and then one `Cycle: …` line per poll 
 
 A listed repository that is public, owned by someone else or not covered by the installation
 is refused with a `Repository … refused: …` warning. When the App is installed on a repository
-that is already listed, the token picks it up when it is renewed (within an hour), or at once
-after `docker compose restart`.
+that is already listed, the token picks it up within 5 minutes: while a listed repository is
+outside the token, the orchestrator scopes a new one at that interval (log reason
+`a listed repository is outside the token`) and revokes the one it replaces.
 
 ## Logs
 
