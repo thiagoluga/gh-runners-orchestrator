@@ -59,11 +59,19 @@ same way on `vm-dev-1` (run 43727251273), so the cause is the Sonar project, not
 on a manually dispatched branch is refused by the plan ("not allowed to access data from non
 main branches").
 
+## Two repositories sharing the slots
+
+[#13](https://github.com/thiagoluga/gh-runners-orchestrator/issues/13), on 2026-11-15, with
+`thiagoluga/runner-pool-sandbox-2` (private) next to the first sandbox, both at
+`MaxConcurrent: 2`.
+
+| Case | How | Result |
+|---|---|---|
+| App installed on a listed repository | listed first (`refused: not readable by the App installation`), then the maintainer added it to the installation | taken in at the next rescope, 5 minutes after the last token (`a listed repository is outside the token`), no restart |
+| Both repositories queue at once | `capacity` (3 legs of 120 s) dispatched in both within seconds | each round one slot per repository: 20:19:31, 20:21:51 and 20:24:11 for both; neither got both slots while the other waited; no container left |
+
 ## Not verified
 
-- **Two repositories sharing the slots** ([#13](https://github.com/thiagoluga/gh-runners-orchestrator/issues/13)):
-  needs a second private repository with the App installed, a maintainer step. The rule is
-  covered by unit tests (`CapacityPlannerTests`).
 - **The version workflow opening its pull request**: needs the repository setting
   *Settings → Actions → General → Allow GitHub Actions to create and approve pull requests*,
   a maintainer decision.
