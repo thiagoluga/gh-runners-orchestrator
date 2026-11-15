@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: A security vulnerability
+    url: https://github.com/thiagoluga/gh-runners-orchestrator/security/advisories/new
+    about: Report privately. The orchestrator holds repository administration rights and controls the host's Docker.
+  - name: Questions and ideas
+    url: https://github.com/thiagoluga/gh-runners-orchestrator/discussions
+    about: Ask or propose here; issues are for bugs and agreed work.
+  - name: Architecture and decisions
+    url: https://github.com/thiagoluga/gh-runners-orchestrator/blob/main/docs/architecture.md
+    about: Read how it works and why before proposing a change of design.
