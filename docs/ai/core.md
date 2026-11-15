@@ -28,8 +28,10 @@ or third-party repositories, autoscaling of hosts.
 
 ## How to work
 
-- Branch from `main`, PR to `main`, one open PR at a time, PRs grouped per phase; Thiago
-  merges ([ADR 0007](../adr/0007-branching-and-delivery.md)).
+- Branch from `main`, PR to `main`, one open PR at a time, PRs grouped per phase; merge
+  when every required check is green and every thread is resolved. Documentation-only
+  changes go straight to `main`, without a PR; CI ignores them
+  ([ADR 0007](../adr/0007-branching-and-delivery.md)).
 - Conventional Commits. Author Thiago, committer Claude:
   `GIT_COMMITTER_NAME=Claude GIT_COMMITTER_EMAIL=noreply@anthropic.com git commit`
   with the repo-local identity `Thiago Lugarini <thiagoluga@hotmail.com>`. Trailer
