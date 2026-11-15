@@ -6,8 +6,10 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    paths-ignore: ["**/*.md", "docs/**"]
   push:
     branches: [main]
+    paths-ignore: ["**/*.md", "docs/**"]
   workflow_dispatch:
 
 permissions:
@@ -63,8 +65,8 @@ jobs:
   sonar:
     name: SonarCloud analysis and Quality Gate
     needs: build
-    # A fork's pull request gets no secrets; its analysis runs after the merge on main.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # Fork and Dependabot pull requests get no secrets; main analyzes the change after the merge.
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:

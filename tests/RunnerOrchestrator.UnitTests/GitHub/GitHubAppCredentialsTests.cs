@@ -45,7 +45,8 @@ public sealed class GitHubAppCredentialsTests : IDisposable
             .On(HttpMethod.Post, "/app/installations/42/access_tokens", request => FakeHttpHandler.Json(
                 HttpStatusCode.Created,
                 $$"""{"token":"{{(IsScoped(request) ? Token : MetadataToken)}}","expires_at":"{{_time.GetUtcNow().AddHours(1):O}}"}"""))
-            .On(HttpMethod.Get, "/installation/repositories", _ => FakeHttpHandler.Json(HttpStatusCode.OK, _installed));
+            .On(HttpMethod.Get, "/installation/repositories", _ => FakeHttpHandler.Json(HttpStatusCode.OK, _installed))
+            .On(HttpMethod.Delete, "/installation/token", HttpStatusCode.NoContent);
     }
 
     [Fact]
@@ -88,6 +89,66 @@ public sealed class GitHubAppCredentialsTests : IDisposable
 
         using var body = JsonDocument.Parse(ScopedTokenRequests().Single().Body!);
         body.RootElement.GetProperty("repositories").EnumerateArray().Select(e => e.GetString()).Should().Equal("runner-pool-sandbox", "other");
+    }
+
+    [Fact]
+    public async Task GetInstallationToken_ConfiguredRepositoryInstalledLater_RescopesAfterInterval()
+    {
+        using var credentials = Create("thiagoluga/runner-pool-sandbox", "thiagoluga/late");
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+
+        _time.Advance(GitHubAppCredentials.UncoveredRescopeInterval - TimeSpan.FromSeconds(1));
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+        ScopedTokenRequests().Should().ContainSingle();
+
+        _installed = """{"repositories":[{"full_name":"thiagoluga/runner-pool-sandbox"},{"full_name":"thiagoluga/late"}]}""";
+        _time.Advance(TimeSpan.FromSeconds(1));
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+
+        var scoped = ScopedTokenRequests().ToList();
+        scoped.Should().HaveCount(2);
+        using var body = JsonDocument.Parse(scoped[1].Body!);
+        body.RootElement.GetProperty("repositories").EnumerateArray().Select(e => e.GetString()).Should().Equal("runner-pool-sandbox", "late");
+    }
+
+    [Fact]
+    public async Task GetInstallationToken_StillUncoveredAfterRescope_WaitsAnotherInterval()
+    {
+        using var credentials = Create("thiagoluga/runner-pool-sandbox", "thiagoluga/never-installed");
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+        _time.Advance(GitHubAppCredentials.UncoveredRescopeInterval);
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+
+        _time.Advance(GitHubAppCredentials.UncoveredRescopeInterval - TimeSpan.FromSeconds(1));
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+
+        ScopedTokenRequests().Should().HaveCount(2);
+        _logger.AllText.Should().Contain("a listed repository is outside the token");
+    }
+
+    [Fact]
+    public async Task GetInstallationToken_Rescoped_RevokesReplacedAndMetadataTokens()
+    {
+        using var credentials = Create("thiagoluga/runner-pool-sandbox", "thiagoluga/never-installed");
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+        _time.Advance(GitHubAppCredentials.UncoveredRescopeInterval);
+
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+
+        _handler.Requests.Where(r => r.Method == HttpMethod.Delete).Select(r => r.Authorization)
+            .Should().Equal($"Bearer {MetadataToken}", $"Bearer {MetadataToken}", $"Bearer {Token}");
+    }
+
+    [Fact]
+    public async Task GetInstallationToken_AllConfiguredCovered_DoesNotRescopeEarly()
+    {
+        using var credentials = Create("thiagoluga/runner-pool-sandbox", "someone/else-owned");
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+
+        _time.Advance(TimeSpan.FromMinutes(30));
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+
+        ScopedTokenRequests().Should().ContainSingle();
     }
 
     [Fact]

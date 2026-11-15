@@ -13,3 +13,4 @@ A decision recorded here is not reopened without a new ADR that supersedes it. C
 | [0006](0006-security-model.md) | Only the maintainer's private repositories, on a host that holds nothing else | Accepted |
 | [0007](0007-branching-and-delivery.md) | `main` only, pull requests for everything, grouped per phase | Accepted |
 | [0008](0008-portable-deployment.md) | Container image for any Linux Docker Engine host | Accepted |
+| [0009](0009-central-controller-and-host-agents.md) | Central controller on the production VPS, outbound agents on runner hosts | Proposed |

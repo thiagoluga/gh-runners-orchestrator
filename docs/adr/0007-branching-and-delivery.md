@@ -17,12 +17,15 @@ The maintainer also asked for coarser pull requests on this project, to move fas
 
 ## Decision
 
-- **Single long-lived branch `main`.** Every change, documentation included, arrives by a
-  pull request from a short-lived branch (`docs/…`, `feat/…`, `fix/…`, `ci/…`).
+- **Single long-lived branch `main`.** Every code, workflow or deployment change arrives
+  by a pull request from a short-lived branch (`feat/…`, `fix/…`, `ci/…`).
+  Documentation-only changes (`**/*.md`, `docs/**`) are pushed straight to `main`
+  (amended 2026-11-15, below).
 - `main` is protected by a ruleset: no deletion, no force push, pull request required,
   review threads resolved, squash merge only. Required status checks are added with the
   first workflow.
-- **One open pull request at a time.** The maintainer merges.
+- **One open pull request at a time.** Merged once every required check is green and
+  every review thread is resolved (by Claude in the autonomous cycle the maintainer set).
 - **Pull requests group a phase's tasks** (one PR may close several task issues) instead
   of one PR per task. Each PR lists the issues it closes and what it does not do yet.
 - Conventional Commits for commits and PR titles; the squash commit takes the PR title.
@@ -37,5 +40,15 @@ The maintainer also asked for coarser pull requests on this project, to move fas
 
 - Larger PRs need a clear description and a checklist per closed issue, or review gets
   shallow.
-- Documentation changes wait for a merge like code does. Acceptable: there is one
-  maintainer and one open PR at a time.
+- Documentation-only changes skip review and CI. Acceptable: they cannot change what runs
+  on the host, and the next code PR still builds and scans the whole tree.
+
+## Amendment 2026-11-15
+
+At the maintainer's request:
+
+- The `main` ruleset lets the repository admin role bypass it, so documentation can be
+  pushed directly. Pull requests still need every required check.
+- `CI`, `CodeQL` and `Images` ignore pushes and pull requests that touch only `**/*.md`
+  and `docs/**`, so documentation spends no runner time. A pull request that touches only
+  documentation therefore never gets its required checks; push it to `main` instead.

@@ -54,10 +54,16 @@ Expect `Installation token renewed …` and then one `Cycle: …` line per poll 
    runners start; idle ones are removed after the idle timeout. Then remove it from the App
    installation.
 
+Slots share the host network and Docker daemon. Give `MaxConcurrent: 1` to a repository
+whose tests assume a host of their own, for example those that start the same Aspire
+application in parallel jobs. saas-foundry runs this way
+([#35](https://github.com/thiagoluga/gh-runners-orchestrator/issues/35)).
+
 A listed repository that is public, owned by someone else or not covered by the installation
 is refused with a `Repository … refused: …` warning. When the App is installed on a repository
-that is already listed, the token picks it up when it is renewed (within an hour), or at once
-after `docker compose restart`.
+that is already listed, the token picks it up within 5 minutes: while a listed repository is
+outside the token, the orchestrator scopes a new one at that interval (log reason
+`a listed repository is outside the token`) and revokes the one it replaces.
 
 ## Logs
 
