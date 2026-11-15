@@ -39,7 +39,9 @@ internal sealed class DockerEngineClient(HttpClient http) : IContainerRuntime, I
     }
 
     public static HttpClient CreateHttpClient(HttpMessageHandler handler) =>
-        new(handler) { BaseAddress = new Uri($"http://docker/{ApiVersion}/"), Timeout = TimeSpan.FromMinutes(10) };
+        // The connection goes to the local Unix socket (ConnectCallback); the host name is never
+        // resolved and nothing leaves the machine, so there is no TLS to use.
+        new(handler) { BaseAddress = new Uri($"http://docker/{ApiVersion}/"), Timeout = TimeSpan.FromMinutes(10) }; // NOSONAR S5332
 
     public async Task EnsureImageAsync(string image, CancellationToken cancellationToken)
     {

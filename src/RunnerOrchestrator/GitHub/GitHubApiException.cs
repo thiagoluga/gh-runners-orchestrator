@@ -27,6 +27,13 @@ public sealed class GitHubApiException : Exception
 
     public HttpStatusCode? StatusCode { get; }
 
-    private static string Truncate(string? message) =>
-        string.IsNullOrEmpty(message) ? "(no message)" : message.Length <= 200 ? message : message[..200];
+    private static string Truncate(string? message)
+    {
+        if (string.IsNullOrEmpty(message))
+        {
+            return "(no message)";
+        }
+
+        return message.Length <= 200 ? message : message[..200];
+    }
 }

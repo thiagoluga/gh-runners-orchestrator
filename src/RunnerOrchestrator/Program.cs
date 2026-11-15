@@ -33,6 +33,7 @@ builder.Services.AddSingleton(sp => GitHubHttp.CreateClient(sp.GetRequiredServic
 builder.Services.AddSingleton<IGitHubCredentialSource, GitHubAppCredentials>();
 builder.Services.AddSingleton<IGitHubRunnerApi, GitHubRunnerApi>();
 builder.Services.AddSingleton<IContainerRuntime>(sp => DockerEngineClient.ForSocket(sp.GetRequiredService<IOptions<OrchestratorOptions>>().Value.DockerSocket));
+builder.Services.AddSingleton<PoolBoundaries>();
 builder.Services.AddSingleton<DemandPoller>();
 builder.Services.AddSingleton<RepositoryGuard>();
 builder.Services.AddSingleton<RunnerLauncher>();

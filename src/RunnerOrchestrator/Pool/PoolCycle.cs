@@ -12,14 +12,12 @@ namespace RunnerOrchestrator.Pool;
 /// demand, plan and launch. Holds no state of its own between passes (ADR 0004).
 /// </summary>
 internal sealed partial class PoolCycle(
-    IContainerRuntime runtime,
-    IGitHubRunnerApi api,
+    PoolBoundaries boundaries,
     DemandPoller poller,
     RepositoryGuard guard,
     RunnerLauncher launcher,
     IOptions<OrchestratorOptions> options,
     IOptions<RepositoryListOptions> repositories,
-    TimeProvider time,
     ILogger<PoolCycle> logger)
 {
     /// <summary>A launch creates and starts within seconds; a container still only created after this never started.</summary>
@@ -27,7 +25,7 @@ internal sealed partial class PoolCycle(
 
     public async Task RunOnceAsync(CancellationToken cancellationToken)
     {
-        var containers = await runtime.ListByLabelAsync(ManagedLabels.ManagedFilter, cancellationToken).ConfigureAwait(false);
+        var containers = await boundaries.Runtime.ListByLabelAsync(ManagedLabels.ManagedFilter, cancellationToken).ConfigureAwait(false);
         var live = new List<ContainerSummary>();
         foreach (var container in containers)
         {
@@ -41,7 +39,7 @@ internal sealed partial class PoolCycle(
             }
         }
 
-        var rateLimit = api.RateLimit;
+        var rateLimit = boundaries.Api.RateLimit;
         if (rateLimit is { IsLow: true })
         {
             LogBackingOff(logger, rateLimit.Remaining, rateLimit.Limit, rateLimit.ResetsAt);
@@ -77,7 +75,7 @@ internal sealed partial class PoolCycle(
         }
 
         var demand = string.Join(", ", demands.Select(d => string.Create(CultureInfo.InvariantCulture, $"{d.Repository}={d.QueuedJobs}q/{d.WaitingRunners}w")));
-        LogSummary(logger, slots.Count, pool.Count + decisions.Count, demand, api.RateLimit?.Remaining);
+        LogSummary(logger, slots.Count, pool.Count + decisions.Count, demand, boundaries.Api.RateLimit?.Remaining);
     }
 
     private async Task<RepositoryDemand> ReadDemandAsync(EnabledRepository repository, List<ContainerSummary> live, CancellationToken cancellationToken)
@@ -87,7 +85,7 @@ internal sealed partial class PoolCycle(
         var waiting = 0;
         if (queued > 0 && mine.Count > 0)
         {
-            var runners = await api.ListRunnersAsync(repository.Name, cancellationToken).ConfigureAwait(false);
+            var runners = await boundaries.Api.ListRunnersAsync(repository.Name, cancellationToken).ConfigureAwait(false);
             var busy = runners.Where(r => r.Busy).Select(r => r.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
             waiting = mine.Count(c => !c.Labels.TryGetValue(ManagedLabels.RunnerName, out var name) || !busy.Contains(name));
         }
@@ -106,15 +104,15 @@ internal sealed partial class PoolCycle(
         container.Labels.TryGetValue(ManagedLabels.Repository, out var repositoryLabel);
         try
         {
-            var state = await runtime.InspectAsync(container.Id, cancellationToken).ConfigureAwait(false);
+            var state = await boundaries.Runtime.InspectAsync(container.Id, cancellationToken).ConfigureAwait(false);
             var duration = state.StartedAt is { } started && state.FinishedAt is { } finished ? finished - started : (TimeSpan?)null;
-            await runtime.RemoveAsync(container.Id, cancellationToken).ConfigureAwait(false);
+            await boundaries.Runtime.RemoveAsync(container.Id, cancellationToken).ConfigureAwait(false);
             LogFinished(logger, container.Name, repositoryLabel ?? "?", state.ExitCode, duration);
             if (ToPoolContainer(container) is { } pooled
                 && container.Labels.TryGetValue(ManagedLabels.RunnerId, out var idLabel)
                 && long.TryParse(idLabel, NumberStyles.None, CultureInfo.InvariantCulture, out var runnerId))
             {
-                await api.DeleteRunnerAsync(pooled.Repository, runnerId, cancellationToken).ConfigureAwait(false);
+                await boundaries.Api.DeleteRunnerAsync(pooled.Repository, runnerId, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception exception) when (IsTransient(exception, cancellationToken))
@@ -128,7 +126,7 @@ internal sealed partial class PoolCycle(
         container.State == "created"
         && container.Labels.TryGetValue(ManagedLabels.CreatedAt, out var createdLabel)
         && DateTimeOffset.TryParse(createdLabel, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var createdAt)
-        && time.GetUtcNow() - createdAt > StuckCreatedAfter;
+        && boundaries.Time.GetUtcNow() - createdAt > StuckCreatedAfter;
 
     /// <summary>Failures of one runner that must not stop the cycle; a requested shutdown still does.</summary>
     private static bool IsTransient(Exception exception, CancellationToken cancellationToken) =>

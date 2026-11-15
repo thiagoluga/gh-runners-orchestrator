@@ -24,7 +24,9 @@ internal static class GitHubAppJwt
             CultureInfo.InvariantCulture,
             $$"""{"iat":{{issuedAt}},"exp":{{expires}},"iss":"{{appId}}"}"""));
         var signingInput = $"{header}.{payload}";
-        var signature = key.SignData(Encoding.ASCII.GetBytes(signingInput), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        // RS256 is by definition RSASSA-PKCS1-v1_5 with SHA-256 (RFC 7518 3.3), the only algorithm
+        // GitHub accepts for App JWTs. This is a signature, not PKCS#1 encryption padding.
+        var signature = key.SignData(Encoding.ASCII.GetBytes(signingInput), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1); // NOSONAR S5542
         return $"{signingInput}.{Base64Url.EncodeToString(signature)}";
     }
 
