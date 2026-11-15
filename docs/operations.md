@@ -89,6 +89,10 @@ No log line ever contains a token, the key or a JIT configuration.
   use the new image; the host pulls it on the first launch. The `runner-version` workflow opens
   a pull request when GitHub releases a new runner; the orchestrator also warns in its log when
   the configured runner is older than the latest release.
+- **Runner image, same tag**: a change to `runner/` that keeps the runner version republishes
+  the same tag (for example `2.338.2`), and the host pulls only a tag it does not have. Pull it
+  once: `docker pull ghcr.io/thiagoluga/gh-runners-orchestrator-runner:<tag>`. The next runner
+  uses it; no restart is needed.
 
 ## Rotate the App key
 
