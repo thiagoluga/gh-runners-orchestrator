@@ -58,3 +58,6 @@ attacker code on the host.
 - Secrets of a running job (`GITHUB_TOKEN`, `SONAR_TOKEN`) are readable by any other job
   running at the same time on the host. Repositories that hold production deploy keys
   should not be enabled, or should deploy from GitHub-hosted runners.
+- Planned evolution: a central controller on the production VPS with agents on the runner
+  hosts ([0009](0009-central-controller-and-host-agents.md), proposed). It moves the App key
+  off the runner host; this ADR still governs the runner hosts themselves.

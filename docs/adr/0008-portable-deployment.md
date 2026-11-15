@@ -42,3 +42,6 @@ Testcontainers and Aspire cannot reach them from a runner container.
 - `restart: unless-stopped` brings it back after a Docker or host restart; the orphan sweep
   then cleans what the restart interrupted. Behavior after a host reboot is verified before
   the migration is called done.
+- Planned evolution: a central controller on the production VPS with agents on the runner
+  hosts ([0009](0009-central-controller-and-host-agents.md), proposed). It moves the App key
+  off the runner host; this ADR still governs the runner hosts themselves.
