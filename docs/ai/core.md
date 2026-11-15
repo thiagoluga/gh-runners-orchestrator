@@ -44,7 +44,7 @@ or third-party repositories, autoscaling of hosts.
 
 ## The host (first deployment)
 
-The pool runs on its own VM, `gh-runner-2`: Ubuntu 24.04 on Hyper-V, 16 vCPUs, 30 GB,
+The pool runs on its own VM, `gh-runner-2`: Ubuntu 24.04 on Hyper-V, 16 vCPUs, 40 GiB of fixed memory,
 static `192.168.68.66/22`, Docker Engine 29 (`nofile` 65536 by default, cgroup v2), user
 `ci` with passwordless sudo, SSH by key only:
 `ssh -i ~/.ssh/ci_vm_ed25519 ci@192.168.68.66`. The old VM `192.168.68.50` runs `vm-dev-1`
