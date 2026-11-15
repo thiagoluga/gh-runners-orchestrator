@@ -44,8 +44,11 @@ or third-party repositories, autoscaling of hosts.
 
 ## The host (first deployment)
 
-Ubuntu 24.04 VM, Docker Engine, user `ci` with passwordless sudo, SSH by key only:
-`ssh -i ~/.ssh/ci_vm_ed25519 ci@192.168.68.50`. From Windows, use SSH from PowerShell;
+The pool runs on its own VM, `gh-runner-2`: Ubuntu 24.04 on Hyper-V, 16 vCPUs, 40 GiB of fixed memory,
+static `192.168.68.66/22`, Docker Engine 29 (`nofile` 65536 by default, cgroup v2), user
+`ci` with passwordless sudo, SSH by key only:
+`ssh -i ~/.ssh/ci_vm_ed25519 ci@192.168.68.66`. The old VM `192.168.68.50` runs `vm-dev-1`
+and is not touched (rule 5). From Windows, use SSH from PowerShell;
 send scripts by `scp` and run them with `bash file < /dev/null` (piped scripts get CRLF and
 `docker exec -i` swallows stdin). Do not hammer the SSH port with polling.
 
@@ -57,6 +60,7 @@ send scripts by `scp` and run them with `bash file < /dev/null` (piped scripts g
 | Decisions | [docs/adr/](../adr/README.md) |
 | Ordered work and risks | [PLAN.md](../../PLAN.md) |
 | Security model | [ADR 0006](../adr/0006-security-model.md) |
+| Maintainer steps (App, Sonar, toy repository) | [docs/maintainer-setup.md](../maintainer-setup.md) |
 | Contribution rules | [CONTRIBUTING.md](../../CONTRIBUTING.md) |
 
 ## Operational lessons
