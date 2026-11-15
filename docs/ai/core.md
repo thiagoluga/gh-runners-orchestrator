@@ -57,6 +57,7 @@ send scripts by `scp` and run them with `bash file < /dev/null` (piped scripts g
 | Decisions | [docs/adr/](../adr/README.md) |
 | Ordered work and risks | [PLAN.md](../../PLAN.md) |
 | Security model | [ADR 0006](../adr/0006-security-model.md) |
+| Maintainer steps (App, Sonar, toy repository) | [docs/maintainer-setup.md](../maintainer-setup.md) |
 | Contribution rules | [CONTRIBUTING.md](../../CONTRIBUTING.md) |
 
 ## Operational lessons
