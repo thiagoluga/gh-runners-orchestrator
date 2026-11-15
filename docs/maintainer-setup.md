@@ -42,7 +42,7 @@ On the App's page:
    That file is the credential. Do not open it in an editor that syncs, and do not paste it
    anywhere.
 3. Left menu **Install App** → **Install** next to `thiagoluga` → **Only select
-   repositories** → the toy repository of step 3 only → **Install**.
+   repositories** → `runner-pool-sandbox` only (section 3) → **Install**.
 
 ### Copy the key to the host
 
@@ -69,11 +69,18 @@ new one on the App page and delete the old one there.
 
 ## 2. SonarQube Cloud
 
-[sonarcloud.io](https://sonarcloud.io) → **+** → **Analyze new project** → your
-organization → select `gh-runners-orchestrator` → **Set up**.
+The project already exists in the organization **`lugarini`**, created before the
+repository was renamed (checked 2026-11-15: name `gh-runners-orchestrator`, main branch
+`main`, no analysis yet). Its key still carries the old name,
+`thiagoluga_gh-runners-orquestrador`.
+
+Rename the key **before the first analysis**, while nothing depends on it: project →
+**Administration** → **Update Key** → `thiagoluga_gh-runners-orchestrator`.
 
 | Setting | Value |
 |---|---|
+| Organization | `lugarini` |
+| Project key | `thiagoluga_gh-runners-orchestrator` (after the rename) |
 | New code definition | **Previous version** |
 | Analysis method (Administration → Analysis Method) | **GitHub Actions**; **Automatic Analysis off** (it does not build C#) |
 | Main branch (Administration → Branches and Pull Requests) | `main` (GitHub's default branch; check the name before the first analysis) |
@@ -85,33 +92,19 @@ GitHub → `gh-runners-orchestrator` → **Settings** → **Secrets and variable
 **Actions** → **New repository secret**: name `SONAR_TOKEN`, value the token. Do not save
 it anywhere else.
 
-Tell the agent the **organization key** and the **project key** shown in the project's
-Information page (neither is secret).
+## 3. Integration repository
 
-## 3. Toy repository
+[`thiagoluga/runner-pool-sandbox`](https://github.com/thiagoluga/runner-pool-sandbox)
+(private, created 2026-11-15) holds the pool's end-to-end scenarios: smoke, capacity,
+sibling container on `localhost`, cancel and memory limit. All are `workflow_dispatch` only
+and aim at `vm-pool`; its README says what each proves.
 
-A **private** repository (for example `thiagoluga/runner-pool-sandbox`) with one workflow,
-`.github/workflows/pool-smoke.yml`:
+This repository cannot be the test target itself: it is public, and a fork's pull request
+could change its own workflow to `runs-on: vm-pool` and get a runner, because a JIT runner
+takes any matching queued job of its repository ([ADR 0006](adr/0006-security-model.md)).
 
-```yaml
-name: pool-smoke
-on: workflow_dispatch
-permissions:
-  contents: read
-jobs:
-  smoke:
-    runs-on: vm-pool
-    timeout-minutes: 10
-    steps:
-      - run: docker run --rm hello-world
-      - run: |
-          echo "cores: $(nproc)"
-          echo "nofile: $(ulimit -n)"
-          free -g
-```
-
-Do not dispatch it yet: with no runner it waits in the queue (up to 24 hours). The proof of
-concept dispatches it.
+The only maintainer step here is installing the App on it (section 1). Do not dispatch the
+scenarios yet: with no runner they wait in the queue for up to 24 hours.
 
 ## What the agent checks afterwards
 
