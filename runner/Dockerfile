@@ -4,7 +4,7 @@
 # Everything the GitHub-hosted ubuntu-24.04 image gives the jobs for free and the jobs use:
 # git, curl, jq, unzip, gh, pwsh, the Docker CLI and a Java runtime for the Sonar scanner.
 # The .NET SDK is not here: setup-dotnet installs the pinned one per job.
-FROM ubuntu:24.04@sha256:2198e4c65076e9cb0b3d695219df667c0e3b0072da64ca3c2648aca17dcecaf5
+FROM ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96
 
 ARG RUNNER_VERSION=2.338.2
 ARG RUNNER_SHA256=baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40

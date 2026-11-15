@@ -1,6 +1,6 @@
 # The orchestrator (docs/adr/0008-portable-deployment.md). Runs as the non-root `app` user
 # (uid 1654) of the chiseled .NET image; the deployment adds the Docker socket's group.
-FROM mcr.microsoft.com/dotnet/sdk:10.0.300-noble@sha256:c0790639332692a0d56cdd81ed581cfd24d040d9839764c138994866df89a3b6 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.404-noble@sha256:fe0fd4e93bd2fbb47c883b7a6369e5c8d3db8bf01cdc5981f6ee35fbdf3ff4fb AS build
 WORKDIR /src
 COPY global.json nuget.config Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY src/RunnerOrchestrator/RunnerOrchestrator.csproj src/RunnerOrchestrator/packages.lock.json src/RunnerOrchestrator/
