@@ -103,3 +103,41 @@ Each runner start lowered the installation's API budget by about 35 requests in 
 cycle, while the orchestrator itself makes about 5. The rest is most likely the runner's own
 calls, counted on the same installation; not investigated further. At 5,000 per hour this
 allows well over 100 runner starts per hour.
+
+## Multi-App binary, legacy configuration acceptance
+
+On 2026-11-16, after the maintainer approved stage 1, the orchestrator was recreated
+from merged commit `3a1e352e39ff266fd557efc530dcf84dcc515e49`
+([PR 41](https://github.com/thiagoluga/gh-runners-orchestrator/pull/41)). The immutable image
+is `ghcr.io/thiagoluga/gh-runners-orchestrator@sha256:b0047fbc24917d9f26f6b719710cac506c1793bbd92ba2307d94be63e9bb577f`.
+
+- The activation verified the previous image/deployment identity, found no active managed
+  runners, backed up configuration and used an explicit image-only Compose override
+  (`activation-3a1e352.yaml`). JSON, base Compose, environment pins, key mounts, repositories,
+  slots, labels and saas-foundry's concurrency cap stayed unchanged. Byte comparisons of
+  both JSON files passed.
+- Startup renewed the existing installation token and completed cycles for all three
+  configured thiagoluga repositories with two global slots. No token/key/JIT value was read
+  or printed by the agent.
+- The existing private sandbox [smoke run 43861024304](https://github.com/thiagoluga/runner-pool-sandbox/actions/runs/43861024304)
+  passed on sandbox commit `9573ec293cfdb6ef4ffd355db674404bbe53f060`, label `vm-pool`.
+  Its job completed in 6 seconds on runner
+  `orch-thiagoluga-runner-pool-sandbox-slot-1-c384a398`, runner version `2.338.2`.
+- The job measured 5 cores (`0-4`), memory limit `17179869184` bytes (16 GiB), and
+  `nofile=65536`. Its JIT-environment check printed `not present`; Docker hello-world passed.
+  These are configuration/smoke observations, not a load or performance comparison.
+- At 11:49:20 UTC the orchestrator reported the runner finished with exit code 0 and its
+  container was removed. The following cycle returned to `0/2` slots taken; the managed
+  container listing was empty.
+
+Backup/rollback metadata stays on the host at
+`/home/ci/gh-runners-orchestrator/backups/20261116-3a1e352-legacy/`.
+The previous immutable image is
+`ghcr.io/thiagoluga/gh-runners-orchestrator@sha256:bc8ddf9447e3fd6487fec682fdc268c390e8add88a2c2bafb7df271008b990fd`.
+Use the explicit stage-1 override until the separately approved permanent deployment pin
+is applied; a plain `docker compose up` would use the original mutable image pin.
+
+This accepts the new binary with legacy thiagoluga configuration only. No maozinha account,
+App key, repository-list entry or consumer workflow was activated. Two-App real-host
+acceptance remains pending key provisioning, verified installation metadata and a separately
+reviewed/approved registry/Compose configuration diff.
