@@ -40,6 +40,12 @@ rule matters more than the check. Details: [ADR 0006](docs/adr/0006-security-mod
 - A GitHub App you own, installed on the enabled repositories, with Actions read and
   Administration read and write ([ADR 0002](docs/adr/0002-github-app-credential.md)).
 
+## Setup
+
+1. Create the GitHub App, install it on the repositories to serve and copy its key to the
+   host: [docs/maintainer-setup.md](docs/maintainer-setup.md).
+2. Install and run the pool on the host: [docs/operations.md](docs/operations.md).
+
 ## Contributing
 
 Multi-account configuration and activation gates: [docs/multi-account.md](docs/multi-account.md).

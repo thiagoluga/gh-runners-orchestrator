@@ -42,7 +42,13 @@ On the App's page:
    That file is the credential. Do not open it in an editor that syncs, and do not paste it
    anywhere.
 3. Left menu **Install App** → **Install** next to `thiagoluga` → **Only select
-   repositories** → `runner-pool-sandbox` only (section 3) → **Install**.
+   repositories** → only the private repositories the pool will serve; start with
+   `runner-pool-sandbox` (section 3) → **Install**. Never **All repositories**: the App could
+   then act on every repository of the account, public ones included.
+
+Adding a repository later: the App → **Install App** → the gear next to the account →
+**Repository access** → add it, then list it in `config/repositories.json` on the host
+([operations.md](operations.md#enable-or-disable-a-repository)).
 
 ### Copy the key to the host
 
