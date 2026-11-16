@@ -93,3 +93,7 @@ Numbered, dated, never rewritten.
 6. (2026-11-15) The account has no GitHub-hosted minutes for private repositories: a job on
    `ubuntu-24.04` in the sandbox is refused at once. Private repositories run every job on
    the pool; this public repository's CI is unaffected.
+
+7. (2026-11-16) Job concurrency can mark a workflow `pending` while another job is
+   already `queued` for a runner. Poll pending runs too, but count only served queued
+   jobs; pending jobs themselves are not runnable demand (fixed in #42).

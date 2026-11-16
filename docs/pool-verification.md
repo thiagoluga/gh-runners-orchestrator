@@ -271,3 +271,22 @@ two volumes; its success result was read. The maintainer also requested leaving 
 on the pool: repository `CI_RUNNER=vm-pool` was set and read back. This supersedes the
 temporary-test selector state above. Required artifact uploads remain a separate blocker;
 no application promotion or production operation was performed.
+
+## Pending-workflow discovery deployment - 2026-11-16
+
+Maintainer merged [#42](https://github.com/thiagoluga/gh-runners-orchestrator/pull/42)
+as `b5f1a33972d439030564252cf5b75afae70d30ae` and requested continuation. Post-merge
+CI, both published images and CodeQL passed; Sonar reported zero new/accepted issues,
+zero new hotspots, 89.3% main new-code coverage and no new duplication.
+
+Pulled the revision-tagged orchestrator image and verified its OCI revision before
+replacing only the existing Compose service. The host now pins
+`ghcr.io/thiagoluga/gh-runners-orchestrator@sha256:180cf2e22afa0fad2dafa9c601de3d0d2681ee35246f73846ff89686e3316cdb`.
+Rollback Compose is `/home/ci/gh-runners-orchestrator/compose.yaml.before-b5f1a33`.
+No managed runner was active at replacement. Account bindings, host key files, runner
+image, two global slots and per-repository capacity were unchanged.
+
+At 20:58:18 UTC the service started, running with zero restarts. Both App installations
+renewed successfully; at 20:58:32 it detected two queued Insurapp jobs inside the pending
+workflow and launched maozinha runner 32 in slot 1. This establishes discovery recovery;
+full current Insurapp CI/package acceptance remains separate and pending.
