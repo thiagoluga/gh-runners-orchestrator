@@ -31,7 +31,7 @@ internal sealed record RepositoryDto(string FullName, bool Private, OwnerDto Own
 
 internal sealed record OwnerDto(string Login);
 
-internal sealed record InstallationDto(long Id);
+internal sealed record InstallationDto(long Id, long AppId, OwnerDto Account);
 
 internal sealed record AccessTokenRequest(IReadOnlyList<string>? Repositories, AccessTokenPermissions Permissions);
 

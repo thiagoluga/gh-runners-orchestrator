@@ -45,8 +45,9 @@ flowchart LR
 | `Scheduler` | Pure function: slots + running containers + demand + now → create / remove actions | none (unit-tested) |
 | `RunnerLauncher` | Generate the JIT configuration, create and start the container | both |
 | `Reaper` | Idle-runner timeout, exited containers, orphan runners and containers | both |
-| `RepositoryGuard` | Refuse a listed repository that is public, not owned by the configured owner, or not covered by the App installation | `IGitHubRunnerApi` |
-| `GitHubAppCredentials` | JWT → installation token, scoped down, renewed before expiry | `IGitHubCredentialSource` |
+| `RepositoryGuard` | Refuse a listed repository that is public, not owned by the configured trusted accounts, or not covered by the App installation | `IGitHubRunnerApi` |
+| `GitHubAppCredentials` | Per-account JWT → installation token, validated identity, renewed before expiry | `IGitHubCredentialSource` |
+| `InstallationRouter` | Qualified repository routing, independent caches and API budgets | `IGitHubRunnerApi` |
 
 One cycle, every `PollInterval`:
 
@@ -56,7 +57,7 @@ One cycle, every `PollInterval`:
 4. `Scheduler` decides; `Reaper` and `RunnerLauncher` act.
 5. Log one summary line: slots busy/idle/free, demand per repository, rate-limit budget.
 
-## Configuration (proposed shape)
+## Configuration
 
 ```jsonc
 {
@@ -83,6 +84,11 @@ so enabling a repository never touches anything else:
 ```jsonc
 { "Repositories": [ { "Name": "thiagoluga/saas-foundry", "MaxConcurrent": 2 } ] }
 ```
+
+The existing `Owner` format remains supported. For multiple accounts, replace `Owner`
+with explicit `Accounts` owner/installation pairs; never configure both. One coordinator
+still owns the global slots. See [multi-account.md](multi-account.md) for validation,
+migration and rollback. Tokens, ETags and rate budgets are isolated per installation.
 
 The App id is not secret. The private key path points at a file; the key itself is never
 in configuration.

@@ -63,6 +63,11 @@ internal sealed partial class RunnerLauncher(
                 NofileLimit: NofileLimit,
                 DockerSocket: settings.DockerSocket,
                 DockerSocketGroupId: settings.DockerSocketGroupId);
+            if (api.GetInstallationId(repository) is { } installationId)
+            {
+                ((Dictionary<string, string>)spec.Labels)[ManagedLabels.InstallationId] = installationId.ToString(CultureInfo.InvariantCulture);
+            }
+
             containerId = await runtime.CreateAsync(spec, cancellationToken).ConfigureAwait(false);
             await runtime.StartAsync(containerId, cancellationToken).ConfigureAwait(false);
             LogLaunched(logger, jit.RunnerName, jit.RunnerId, repository, slot.Name);
@@ -79,7 +84,7 @@ internal sealed partial class RunnerLauncher(
     internal static string CreateRunnerName(RepositoryName repository, string slot, string suffix)
     {
         var tail = $"-{Sanitize(slot)}-{suffix}";
-        var repo = Sanitize(repository.Name);
+        var repo = Sanitize($"{repository.Owner}-{repository.Name}");
         var room = MaxNameLength - "orch-".Length - tail.Length;
         if (repo.Length > room)
         {

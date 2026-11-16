@@ -64,7 +64,7 @@ public sealed class DemandAndGuardTests
         var enabled = await guard.FilterAsync([new RepositoryOptions { Name = "someone/else" }], TestContext.Current.CancellationToken);
 
         enabled.Should().BeEmpty();
-        logger.AllText.Should().Contain("not owned by thiagoluga");
+        logger.AllText.Should().Contain("owner is not authorized");
         await _api.DidNotReceiveWithAnyArgs().GetRepositoryAsync(default, TestContext.Current.CancellationToken);
     }
 
@@ -77,7 +77,7 @@ public sealed class DemandAndGuardTests
         var enabled = await guard.FilterAsync([new RepositoryOptions { Name = "thiagoluga/runner-pool-sandbox" }], TestContext.Current.CancellationToken);
 
         enabled.Should().BeEmpty();
-        logger.AllText.Should().Contain("not readable by the App installation (NotFound)");
+        logger.AllText.Should().Contain("not readable by the App installation");
     }
 
     [Fact]
@@ -89,6 +89,26 @@ public sealed class DemandAndGuardTests
         var enabled = await guard.FilterAsync([new RepositoryOptions { Name = "thiagoluga/runner-pool-sandbox" }], TestContext.Current.CancellationToken);
 
         enabled.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Filter_DifferentRepositoryReturnedByApi_IsRefused()
+    {
+        _api.GetRepositoryAsync(Sandbox, Arg.Any<CancellationToken>()).Returns(new RepositoryInfo(new("thiagoluga", "other"), true, "thiagoluga"));
+        var (guard, _) = CreateGuard();
+        (await guard.FilterAsync([new RepositoryOptions { Name = Sandbox.ToString() }], TestContext.Current.CancellationToken)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Filter_DuplicatedRepositoryOrNegativeCap_IsRefused()
+    {
+        _api.GetRepositoryAsync(Sandbox, Arg.Any<CancellationToken>()).Returns(new RepositoryInfo(Sandbox, true, "thiagoluga"));
+        var (guard, _) = CreateGuard();
+        (await guard.FilterAsync([
+            new RepositoryOptions { Name = Sandbox.ToString(), MaxConcurrent = 1 },
+            new RepositoryOptions { Name = Sandbox.ToString().ToUpperInvariant(), MaxConcurrent = 2 },
+        ], TestContext.Current.CancellationToken)).Should().BeEmpty();
+        (await guard.FilterAsync([new RepositoryOptions { Name = Sandbox.ToString(), MaxConcurrent = -1 }], TestContext.Current.CancellationToken)).Should().BeEmpty();
     }
 
     private (RepositoryGuard Guard, ListLogger<RepositoryGuard> Logger) CreateGuard()

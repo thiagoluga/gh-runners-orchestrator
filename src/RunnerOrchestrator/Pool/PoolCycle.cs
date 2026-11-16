@@ -33,18 +33,7 @@ internal sealed partial class PoolCycle(
     public async Task RunOnceAsync(CancellationToken cancellationToken)
     {
         var containers = await boundaries.Runtime.ListByLabelAsync(ManagedLabels.ManagedFilter, cancellationToken).ConfigureAwait(false);
-        var live = new List<ManagedRunner>();
-        foreach (var container in containers)
-        {
-            if (container.State is "exited" or "dead" || IsStuckCreated(container))
-            {
-                await RemoveFinishedAsync(container, cancellationToken).ConfigureAwait(false);
-            }
-            else if (ToManagedRunner(container) is { } managed)
-            {
-                live.Add(managed);
-            }
-        }
+        var (live, finishedRemoved) = await ReadContainersAsync(containers, cancellationToken).ConfigureAwait(false);
 
         var rateLimit = boundaries.Api.RateLimit;
         if (rateLimit is { IsLow: true })
@@ -55,8 +44,9 @@ internal sealed partial class PoolCycle(
 
         var settings = options.Value;
         var enabled = await guard.FilterAsync(repositories.CurrentValue.Repositories, cancellationToken).ConfigureAwait(false);
-        var watched = enabled.Select(e => e.Name)
-            .Concat(live.Select(c => c.Repository).Where(r => string.Equals(r.Owner, settings.Owner, StringComparison.OrdinalIgnoreCase)))
+        var cleanupRepositories = await boundaries.Api.ListCleanupRepositoriesAsync(cancellationToken).ConfigureAwait(false);
+        var watched = enabled.Select(e => e.Name).Concat(cleanupRepositories)
+            .Concat(live.Select(c => c.Repository).Where(r => settings.AllowsOwner(r.Owner)))
             .Distinct()
             .ToList();
         var runners = await ReadRunnersAsync(watched, cancellationToken).ConfigureAwait(false);
@@ -69,22 +59,36 @@ internal sealed partial class PoolCycle(
         var demands = new List<RepositoryDemand>();
         foreach (var repository in enabled)
         {
-            demands.Add(await ReadDemandAsync(repository, live, runners, cancellationToken).ConfigureAwait(false));
+            try
+            {
+                demands.Add(await ReadDemandAsync(repository, live, runners, cancellationToken).ConfigureAwait(false));
+            }
+            catch (Exception exception) when (IsTransient(exception, cancellationToken))
+            {
+                LogRunnersUnreadable(logger, repository.Name, exception.Message);
+            }
         }
 
         var slots = settings.Slots;
-        var pool = live.Select(c => new PoolContainer(c.Repository, c.Slot)).ToList();
+        var pool = BuildPool(containers, live, removed, finishedRemoved);
+        if (pool is null)
+        {
+            return;
+        }
+
         var decisions = CapacityPlanner.Plan([.. slots.Select(s => s.Name)], pool, demands);
+        var launched = 0;
         foreach (var decision in decisions)
         {
             var slot = slots.First(s => string.Equals(s.Name, decision.Slot, StringComparison.OrdinalIgnoreCase));
             try
             {
                 await launcher.LaunchAsync(decision.Repository, slot, cancellationToken).ConfigureAwait(false);
+                launched++;
             }
             catch (Exception exception) when (IsTransient(exception, cancellationToken))
             {
-                // Already logged by the launcher; the next cycle tries again.
+                LogLaunchFailed(logger, decision.Repository, exception.Message);
             }
         }
 
@@ -94,7 +98,59 @@ internal sealed partial class PoolCycle(
         }
 
         var demand = string.Join(", ", demands.Select(d => string.Create(CultureInfo.InvariantCulture, $"{d.Repository}={d.QueuedJobs}q/{d.WaitingRunners}w")));
-        LogSummary(logger, slots.Count, pool.Count + decisions.Count, demand, boundaries.Api.RateLimit?.Remaining);
+        var budgets = string.Join(", ", watched.GroupBy(r => r.Owner, StringComparer.OrdinalIgnoreCase).Select(group =>
+        {
+            var budget = boundaries.Api.GetRateLimit(group.First());
+            return string.Create(CultureInfo.InvariantCulture, $"{group.Key}={budget?.Remaining}/{budget?.Limit}");
+        }));
+        LogSummary(logger, slots.Count, pool.Count + launched, demand, budgets);
+    }
+
+    private async Task<(List<ManagedRunner> Live, HashSet<string> Removed)> ReadContainersAsync(
+        IReadOnlyList<ContainerSummary> containers, CancellationToken cancellationToken)
+    {
+        var live = new List<ManagedRunner>();
+        var finishedRemoved = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var container in containers)
+        {
+            if (CanManage(container) && (container.State is "exited" or "dead" || IsStuckCreated(container)))
+            {
+                if (await RemoveFinishedAsync(container, cancellationToken).ConfigureAwait(false))
+                {
+                    finishedRemoved.Add(container.Id);
+                }
+            }
+            else if (ToManagedRunner(container) is { } managed)
+            {
+                live.Add(managed);
+            }
+        }
+
+        return (live, finishedRemoved);
+    }
+
+    private List<PoolContainer>? BuildPool(IReadOnlyList<ContainerSummary> containers,
+        List<ManagedRunner> live, HashSet<string> removed, HashSet<string> finishedRemoved)
+    {
+        var slots = options.Value.Slots;
+        var pool = live.Select(c => new PoolContainer(c.Repository, c.Slot)).ToList();
+        // Even an ambiguous container reserves its labelled slot until an operator resolves it.
+        foreach (var container in containers.Where(c => !removed.Contains(c.Id) && !finishedRemoved.Contains(c.Id)))
+        {
+            if (!container.Labels.TryGetValue(ManagedLabels.Slot, out var occupied)
+                || !slots.Any(s => string.Equals(s.Name, occupied, StringComparison.OrdinalIgnoreCase)))
+            {
+                LogUnknownSlot(logger, container.Id);
+                return null;
+            }
+
+            if (!pool.Any(c => string.Equals(c.Slot, occupied, StringComparison.OrdinalIgnoreCase)))
+            {
+                pool.Add(new PoolContainer(new RepositoryName(string.Empty, string.Empty), occupied));
+            }
+        }
+
+        return pool;
     }
 
     private async Task<Dictionary<RepositoryName, IReadOnlyList<SelfHostedRunner>>> ReadRunnersAsync(List<RepositoryName> watched, CancellationToken cancellationToken)
@@ -124,11 +180,17 @@ internal sealed partial class PoolCycle(
         var removed = new HashSet<string>(StringComparer.Ordinal);
         foreach (var container in plan.IdleRunners)
         {
+            if (!CanManage(container))
+            {
+                continue;
+            }
+
             try
             {
                 // Runner first: GitHub refuses to delete a runner that just picked a job, and then
                 // the container must stay.
-                var runnerId = container.RunnerId ?? runners[container.Repository].First(r => string.Equals(r.Name, container.RunnerName, StringComparison.OrdinalIgnoreCase)).Id;
+                var runnerId = runners[container.Repository].First(r => string.Equals(r.Name, container.RunnerName, StringComparison.OrdinalIgnoreCase)
+                    && (container.RunnerId is null || r.Id == container.RunnerId)).Id;
                 await boundaries.Api.DeleteRunnerAsync(container.Repository, runnerId, cancellationToken).ConfigureAwait(false);
                 await boundaries.Runtime.RemoveAsync(container.ContainerId, cancellationToken).ConfigureAwait(false);
                 removed.Add(container.ContainerId);
@@ -142,6 +204,11 @@ internal sealed partial class PoolCycle(
 
         foreach (var container in plan.OrphanContainers)
         {
+            if (!CanManage(container))
+            {
+                continue;
+            }
+
             try
             {
                 await boundaries.Runtime.RemoveAsync(container.ContainerId, cancellationToken).ConfigureAwait(false);
@@ -190,7 +257,7 @@ internal sealed partial class PoolCycle(
     /// 404); one that died before its job would otherwise stay registered and offline forever.
     /// Failures are logged and left to the next cycle, so one bad container never stops the pool.
     /// </summary>
-    private async Task RemoveFinishedAsync(ContainerSummary container, CancellationToken cancellationToken)
+    private async Task<bool> RemoveFinishedAsync(ContainerSummary container, CancellationToken cancellationToken)
     {
         container.Labels.TryGetValue(ManagedLabels.Repository, out var repositoryLabel);
         try
@@ -203,10 +270,13 @@ internal sealed partial class PoolCycle(
             {
                 await DeleteFinishedRegistrationAsync(managed, runnerId, cancellationToken).ConfigureAwait(false);
             }
+
+            return true;
         }
         catch (Exception exception) when (IsTransient(exception, cancellationToken))
         {
             LogRemovalFailed(logger, container.Name, exception.Message);
+            return false;
         }
     }
 
@@ -219,7 +289,11 @@ internal sealed partial class PoolCycle(
     {
         try
         {
-            await boundaries.Api.DeleteRunnerAsync(runner.Repository, runnerId, cancellationToken).ConfigureAwait(false);
+            var registrations = await boundaries.Api.ListRunnersAsync(runner.Repository, cancellationToken).ConfigureAwait(false);
+            if (registrations.Any(r => r.Id == runnerId && string.Equals(r.Name, runner.RunnerName, StringComparison.OrdinalIgnoreCase)))
+            {
+                await boundaries.Api.DeleteRunnerAsync(runner.Repository, runnerId, cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (GitHubApiException exception)
         {
@@ -233,9 +307,29 @@ internal sealed partial class PoolCycle(
         && ToManagedRunner(container) is { CreatedAt: { } createdAt }
         && boundaries.Time.GetUtcNow() - createdAt > StuckCreatedAfter;
 
+    private bool CanManage(ContainerSummary container) => ToManagedRunner(container) is { } runner && CanManage(runner);
+
+    private bool CanManage(ManagedRunner runner)
+    {
+        var settings = options.Value;
+        if (!settings.AllowsOwner(runner.Repository.Owner))
+        {
+            return false;
+        }
+
+        if (runner.InstallationId is null)
+        {
+            return settings.Accounts.Count == 0;
+        }
+
+        var expected = settings.Accounts.FirstOrDefault(a => string.Equals(a.Owner, runner.Repository.Owner, StringComparison.OrdinalIgnoreCase))?.InstallationId
+            ?? boundaries.Api.GetInstallationId(runner.Repository);
+        return expected is > 0 && expected == runner.InstallationId;
+    }
+
     /// <summary>Failures of one runner that must not stop the cycle; a requested shutdown still does.</summary>
     private static bool IsTransient(Exception exception, CancellationToken cancellationToken) =>
-        exception is GitHubApiException or DockerEngineException or HttpRequestException
+        exception is GitHubApiException or System.Text.Json.JsonException or DockerEngineException or HttpRequestException
         || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested);
 
     private static ManagedRunner? ToManagedRunner(ContainerSummary container)
@@ -257,7 +351,15 @@ internal sealed partial class PoolCycle(
         DateTimeOffset? createdAt = labels.TryGetValue(ManagedLabels.CreatedAt, out var createdLabel)
             && DateTimeOffset.TryParse(createdLabel, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var created) ? created : null;
         var runnerName = labels.TryGetValue(ManagedLabels.RunnerName, out var runnerLabel) ? runnerLabel : container.Name;
-        return new ManagedRunner(container.Id, name, slot, runnerName, runnerId, createdAt);
+        var installationId = labels.TryGetValue(ManagedLabels.InstallationId, out var installationLabel)
+            && long.TryParse(installationLabel, NumberStyles.None, CultureInfo.InvariantCulture, out var installation) ? installation : (long?)null;
+        // Invalid labels must not be treated as legacy labels.
+        if (labels.ContainsKey(ManagedLabels.InstallationId) && installationId is not > 0)
+        {
+            installationId = -1;
+        }
+
+        return new ManagedRunner(container.Id, name, slot, runnerName, runnerId, createdAt, installationId);
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Runner {RunnerName} of {Repository} finished with exit code {ExitCode} after {Duration}; container removed")]
@@ -287,6 +389,12 @@ internal sealed partial class PoolCycle(
     [LoggerMessage(Level = LogLevel.Warning, Message = "Rate limit low ({Remaining}/{Limit}); skipping demand until {ResetsAt:O}")]
     private static partial void LogBackingOff(ILogger logger, int remaining, int limit, DateTimeOffset resetsAt);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Cycle: {Busy}/{Slots} slots taken; demand {Demand}; rate limit remaining {Remaining}")]
-    private static partial void LogSummary(ILogger logger, int slots, int busy, string demand, int? remaining);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Launching a runner for {Repository} failed; retried next cycle: {Reason}")]
+    private static partial void LogLaunchFailed(ILogger logger, RepositoryName repository, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Managed container {ContainerId} has no configured slot; refusing new launches until resolved")]
+    private static partial void LogUnknownSlot(ILogger logger, string containerId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cycle: {Busy}/{Slots} slots taken; demand {Demand}; rate budgets {Budgets}")]
+    private static partial void LogSummary(ILogger logger, int slots, int busy, string demand, string budgets);
 }

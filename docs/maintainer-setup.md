@@ -67,6 +67,12 @@ official .NET container images, which the orchestrator image runs as.
 Then delete the `.pem` from `Downloads` on the PC. A lost key is not a problem: generate a
 new one on the App page and delete the old one there.
 
+## Additional personal accounts
+
+The initial App setup above is single-account. Before enabling another account, follow
+[the metadata and approval gates](multi-account.md#app-installation-gate); do not assume
+this App can already be installed there. App ID and installation ID are different values.
+
 ## 2. SonarQube Cloud
 
 The project already exists in the organization **`lugarini`**, created before the

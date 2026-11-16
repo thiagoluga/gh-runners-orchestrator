@@ -10,5 +10,7 @@ internal static class ManagedLabels
     public const string RunnerId = "orchestrator.runner-id";
     public const string CreatedAt = "orchestrator.created-at";
 
+    public const string InstallationId = "orchestrator.installation-id";
+
     public const string ManagedFilter = Managed + "=true";
 }
