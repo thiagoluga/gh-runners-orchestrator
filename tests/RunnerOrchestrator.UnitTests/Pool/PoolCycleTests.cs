@@ -30,6 +30,7 @@ public sealed class PoolCycleTests
     [Fact]
     public async Task RunOnce_ExitedContainer_IsInspectedAndRemovedWithItsExitCode()
     {
+        _api.ListRunnersAsync(Sandbox, Arg.Any<CancellationToken>()).Returns([new SelfHostedRunner(7, "orch-c1", "online", true)]);
         _runtime.ListByLabelAsync("orchestrator.managed=true", Arg.Any<CancellationToken>()).Returns([Container("c1", "exited", "slot-1")]);
         _runtime.InspectAsync("c1", Arg.Any<CancellationToken>()).Returns(new ContainerState(
             "exited", 0, new DateTimeOffset(2026, 11, 15, 12, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 11, 15, 12, 3, 0, TimeSpan.Zero)));
@@ -129,6 +130,7 @@ public sealed class PoolCycleTests
     [Fact]
     public async Task RunOnce_ContainerStuckInCreated_IsRemovedAndFreesItsSlot()
     {
+        _api.ListRunnersAsync(Sandbox, Arg.Any<CancellationToken>()).Returns([new SelfHostedRunner(7, "orch-c1", "online", true)]);
         QueueJobs(1);
         _runtime.ListByLabelAsync("orchestrator.managed=true", Arg.Any<CancellationToken>()).Returns([Container("c1", "created", "slot-1")]);
         _runtime.InspectAsync("c1", Arg.Any<CancellationToken>()).Returns(new ContainerState("created", 0, null, null));
@@ -181,7 +183,7 @@ public sealed class PoolCycleTests
         await Create().RunOnceAsync(TestContext.Current.CancellationToken);
 
         await _runtime.DidNotReceiveWithAnyArgs().RemoveAsync(default!, TestContext.Current.CancellationToken);
-        _logger.AllText.Should().Contain("still running a job");
+        _logger.AllText.Should().Contain("422");
     }
 
     [Fact]
@@ -231,6 +233,7 @@ public sealed class PoolCycleTests
     [Fact]
     public async Task RunOnce_KilledRunnerStillBusyOnGitHub_LeavesRegistrationToTheSweep()
     {
+        _api.ListRunnersAsync(Sandbox, Arg.Any<CancellationToken>()).Returns([new SelfHostedRunner(7, "orch-c1", "online", true)]);
         _runtime.ListByLabelAsync("orchestrator.managed=true", Arg.Any<CancellationToken>()).Returns([Container("c1", "exited", "slot-1")]);
         _runtime.InspectAsync("c1", Arg.Any<CancellationToken>()).Returns(new ContainerState("exited", 137, null, null));
         _api.DeleteRunnerAsync(Sandbox, 7, Arg.Any<CancellationToken>()).Returns<Task>(_ => throw new GitHubApiException(System.Net.HttpStatusCode.UnprocessableEntity, "DELETE", "/x", "currently running a job"));
@@ -239,6 +242,28 @@ public sealed class PoolCycleTests
 
         await _runtime.Received(1).RemoveAsync("c1", Arg.Any<CancellationToken>());
         _logger.AllText.Should().Contain("the orphan sweep deletes it once GitHub releases it").And.NotContain("not fully removed");
+    }
+
+    [Fact]
+    public async Task RunOnce_ManagedContainerWithoutKnownSlot_RefusesNewLaunches()
+    {
+        QueueJobs(2);
+        _runtime.ListByLabelAsync(ManagedLabels.ManagedFilter, Arg.Any<CancellationToken>())
+            .Returns([new ContainerSummary("ambiguous", "unknown", "running", new Dictionary<string, string>())]);
+        await Create().RunOnceAsync(TestContext.Current.CancellationToken);
+        await _runtime.DidNotReceiveWithAnyArgs().CreateAsync(default!, TestContext.Current.CancellationToken);
+        _logger.AllText.Should().Contain("no configured slot");
+    }
+
+    [Fact]
+    public async Task RunOnce_FinishedContainerWithInconsistentRunnerId_DoesNotDeleteAnotherRegistration()
+    {
+        _runtime.ListByLabelAsync(ManagedLabels.ManagedFilter, Arg.Any<CancellationToken>()).Returns([Container("c1", "exited", "slot-1")]);
+        _runtime.InspectAsync("c1", Arg.Any<CancellationToken>()).Returns(new ContainerState("exited", 0, null, null));
+        _api.ListRunnersAsync(Sandbox, Arg.Any<CancellationToken>()).Returns([new SelfHostedRunner(8, "orch-c1", "online", true)]);
+        await Create().RunOnceAsync(TestContext.Current.CancellationToken);
+        await _runtime.Received(1).RemoveAsync("c1", Arg.Any<CancellationToken>());
+        await _api.DidNotReceiveWithAnyArgs().DeleteRunnerAsync(default, default, TestContext.Current.CancellationToken);
     }
 
     private void QueueJobs(int count)

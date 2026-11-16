@@ -6,9 +6,11 @@ the task needs them.
 ## Product boundary
 
 An orchestrator of ephemeral GitHub Actions runners: one container per job, a fixed pool
-of slots shared by the maintainer's **private** repositories on one Linux Docker Engine
+of slots shared by **private** repositories in explicitly authorized accounts trusted by
+the maintainer on one Linux Docker Engine
 host. Out of scope until an ADR says otherwise: web UI, Kubernetes, several hosts, public
-or third-party repositories, autoscaling of hosts.
+or untrusted third-party repositories, autoscaling of hosts. See
+[ADR 0011](../adr/0011-multiple-account-installations.md) for account authorization.
 
 ## Non-negotiable
 

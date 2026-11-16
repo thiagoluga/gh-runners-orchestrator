@@ -84,4 +84,17 @@ public sealed class CapacityPlannerTests
 
         decisions.Should().BeEmpty();
     }
+
+    [Fact]
+    public void Plan_AcrossAccounts_UsesQualifiedCapsAndOldestWaitWithoutReservingExtraCapacity()
+    {
+        var thiago = new RepositoryName("thiagoluga", "shared");
+        var mao = new RepositoryName("maozinha", "shared");
+        var oldest = new DateTimeOffset(2026, 11, 16, 11, 0, 0, TimeSpan.Zero);
+        RepositoryDemand[] demand = [new(thiago, 4, 0, 1, oldest.AddMinutes(5)), new(mao, 4, 0, 1, oldest)];
+        CapacityPlanner.Plan(TwoSlots, [new PoolContainer(thiago, "slot-1")], demand)
+            .Should().Equal(new LaunchDecision(mao, "slot-2"));
+        CapacityPlanner.Plan(TwoSlots, [], demand)
+            .Should().Equal(new LaunchDecision(mao, "slot-1"), new LaunchDecision(thiago, "slot-2"));
+    }
 }

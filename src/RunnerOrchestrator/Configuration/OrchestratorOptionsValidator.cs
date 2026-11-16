@@ -9,10 +9,7 @@ internal sealed class OrchestratorOptionsValidator : IValidateOptions<Orchestrat
     public ValidateOptionsResult Validate(string? name, OrchestratorOptions options)
     {
         var errors = new List<string>();
-        if (string.IsNullOrWhiteSpace(options.Owner))
-        {
-            errors.Add("Orchestrator:Owner is required.");
-        }
+        ValidateAccounts(options, errors);
 
         if (options.PollInterval < TimeSpan.FromSeconds(5))
         {
@@ -51,6 +48,35 @@ internal sealed class OrchestratorOptionsValidator : IValidateOptions<Orchestrat
 
         ValidateSlots(options.Slots, errors);
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
+    }
+
+    private static void ValidateAccounts(OrchestratorOptions options, List<string> errors)
+    {
+        if (options.Accounts.Count == 0)
+        {
+            if (RepositoryName.TryParse($"{options.Owner}/repository") is null)
+            {
+                errors.Add("Orchestrator:Owner is required and must be a valid account name.");
+            }
+
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(options.Owner))
+        {
+            errors.Add("Use either Orchestrator:Owner or Accounts, never both.");
+        }
+
+        if (options.Accounts.Any(a => RepositoryName.TryParse($"{a.Owner}/repository") is null || a.InstallationId <= 0))
+        {
+            errors.Add("Every account needs a valid Owner and a positive InstallationId.");
+        }
+
+        if (options.Accounts.Select(a => a.Owner).Distinct(StringComparer.OrdinalIgnoreCase).Count() != options.Accounts.Count
+            || options.Accounts.Select(a => a.InstallationId).Distinct().Count() != options.Accounts.Count)
+        {
+            errors.Add("Account owners and installation IDs must be unique.");
+        }
     }
 
     private static void ValidateSlots(IList<SlotOptions> slots, List<string> errors)

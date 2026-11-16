@@ -5,8 +5,19 @@ public sealed class OrchestratorOptions
 {
     public const string SectionName = "Orchestrator";
 
-    /// <summary>The account that owns every enabled repository.</summary>
+    /// <summary>Legacy single owner; mutually exclusive with Accounts.</summary>
     public string Owner { get; set; } = string.Empty;
+
+    /// <summary>Explicit trusted owner/installation pairs; changing these requires a restart.</summary>
+    public IList<AccountOptions> Accounts { get; } = [];
+
+    public bool AllowsOwner(string owner) => Accounts.Count == 0
+        ? string.Equals(Owner, owner, StringComparison.OrdinalIgnoreCase)
+        : Accounts.Any(a => string.Equals(a.Owner, owner, StringComparison.OrdinalIgnoreCase));
+
+    public IEnumerable<AccountOptions> EffectiveAccounts() => Accounts.Count == 0
+        ? [new AccountOptions { Owner = Owner }]
+        : Accounts;
 
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(20);
 

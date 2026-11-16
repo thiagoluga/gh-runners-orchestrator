@@ -33,7 +33,7 @@ public sealed class RunnerLauncherTests
         await _runtime.Received(1).EnsureImageAsync(options.RunnerImage, Arg.Any<CancellationToken>());
         await _api.Received(1).GenerateJitConfigAsync(
             Sandbox,
-            Arg.Is<string>(n => n.StartsWith("orch-runner-pool-sandbox-slot-2-", StringComparison.Ordinal)),
+            Arg.Is<string>(n => n.StartsWith("orch-thiagoluga-runner-pool-sandbox-slot-2-", StringComparison.Ordinal)),
             Arg.Is<IReadOnlyList<string>>(l => l.SequenceEqual(new[] { "self-hosted", "linux", "x64", "vm-pool" })),
             Arg.Any<CancellationToken>());
         var spec = (ContainerSpec)_runtime.ReceivedCalls().Single(c => c.GetMethodInfo().Name == nameof(IContainerRuntime.CreateAsync)).GetArguments()[0]!;

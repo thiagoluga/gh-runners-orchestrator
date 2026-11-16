@@ -8,6 +8,13 @@ internal interface IGitHubRunnerApi
     /// <summary>Budget left according to the last response; null before the first call.</summary>
     RateLimitStatus? RateLimit { get; }
 
+    RateLimitStatus? GetRateLimit(RepositoryName repository) => RateLimit;
+
+    long? GetInstallationId(RepositoryName repository) => null;
+
+    Task<IReadOnlyList<RepositoryName>> ListCleanupRepositoriesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<RepositoryName>>([]);
+
     Task<IReadOnlyList<long>> ListRunIdsAsync(RepositoryName repository, string status, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<WorkflowJob>> ListJobsAsync(RepositoryName repository, long runId, CancellationToken cancellationToken);

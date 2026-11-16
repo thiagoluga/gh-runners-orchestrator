@@ -101,16 +101,16 @@ public sealed class GitHubRunnerApiTests : IDisposable
     }
 
     [Fact]
-    public async Task GetRepository_Forbidden_ThrowsWithGitHubMessageAndNoToken()
+    public async Task GetRepository_Forbidden_ThrowsWithStatusAndNoResponseContent()
     {
-        _handler.On(HttpMethod.Get, "/repos/thiagoluga/runner-pool-sandbox", HttpStatusCode.Forbidden, """{"message":"Resource not accessible by integration"}""");
+        _handler.On(HttpMethod.Get, "/repos/thiagoluga/runner-pool-sandbox", HttpStatusCode.Forbidden, """{"message":"Resource not accessible by integration ghs_installationtoken -----BEGIN PRIVATE KEY----- SECRETJITCONFIG"}""");
         var api = Create();
 
         var act = () => api.GetRepositoryAsync(Sandbox, TestContext.Current.CancellationToken);
 
         var thrown = await act.Should().ThrowAsync<GitHubApiException>();
         thrown.Which.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        thrown.Which.Message.Should().Contain("403").And.Contain("Resource not accessible by integration").And.NotContain(Token);
+        thrown.Which.Message.Should().Contain("403").And.NotContain("Resource not accessible by integration").And.NotContain(Token).And.NotContain("-----BEGIN").And.NotContain("SECRETJITCONFIG");
     }
 
     [Fact]
@@ -135,6 +135,31 @@ public sealed class GitHubRunnerApiTests : IDisposable
         var runners = await api.ListRunnersAsync(Sandbox, TestContext.Current.CancellationToken);
 
         runners.Should().Equal(new SelfHostedRunner(23, "orch-x", "online", true));
+    }
+
+    [Theory]
+    [InlineData("different", 23)]
+    [InlineData("orch-x", 0)]
+    public async Task GenerateJitConfig_InconsistentRunnerIdentity_IsRefused(string name, long id)
+    {
+        _handler.On(HttpMethod.Post, "/repos/thiagoluga/runner-pool-sandbox/actions/runners/generate-jitconfig", HttpStatusCode.Created,
+            JsonSerializer.Serialize(new { runner = new { id, name }, encoded_jit_config = "SECRETJITCONFIG" }));
+        var act = () => Create().GenerateJitConfigAsync(Sandbox, "orch-x", ["vm-pool"], TestContext.Current.CancellationToken);
+        var thrown = await act.Should().ThrowAsync<GitHubApiException>();
+        thrown.Which.Message.Should().NotContain("SECRETJITCONFIG");
+    }
+
+    [Theory]
+    [InlineData("other/repo", "other")]
+    [InlineData("thiagoluga/other", "thiagoluga")]
+    [InlineData("thiagoluga/runner-pool-sandbox", "other")]
+    [InlineData("malformed", "thiagoluga")]
+    public async Task GetRepository_InconsistentIdentity_IsRefused(string fullName, string login)
+    {
+        _handler.On(HttpMethod.Get, "/repos/thiagoluga/runner-pool-sandbox", HttpStatusCode.OK,
+            JsonSerializer.Serialize(new { full_name = fullName, @private = true, owner = new { login } }));
+        var act = () => Create().GetRepositoryAsync(Sandbox, TestContext.Current.CancellationToken);
+        await act.Should().ThrowAsync<GitHubApiException>();
     }
 
     private GitHubRunnerApi Create() => new(GitHubHttp.CreateClient(new Uri("https://api.github.test/"), _handler), _credentials);

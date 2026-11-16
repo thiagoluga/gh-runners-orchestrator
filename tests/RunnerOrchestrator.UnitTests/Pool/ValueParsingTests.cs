@@ -72,7 +72,7 @@ public sealed class ValueParsingTests
     {
         var name = RunnerLauncher.CreateRunnerName(new RepositoryName("thiagoluga", new string('a', 90) + ".X_y"), "slot-1", "0123abcd");
 
-        name.Should().StartWith("orch-aaa").And.EndWith("-slot-1-0123abcd");
+        name.Should().StartWith("orch-thiagoluga-aaa").And.EndWith("-slot-1-0123abcd");
         name.Length.Should().BeLessThanOrEqualTo(64);
         name.Should().MatchRegex("^[a-z0-9-]+$");
     }
@@ -81,6 +81,6 @@ public sealed class ValueParsingTests
     public void CreateRunnerName_ShortRepository_KeepsItWhole()
     {
         RunnerLauncher.CreateRunnerName(new RepositoryName("thiagoluga", "Runner.Pool_Sandbox"), "slot-2", "ffff0000")
-            .Should().Be("orch-runner-pool-sandbox-slot-2-ffff0000");
+            .Should().Be("orch-thiagoluga-runner-pool-sandbox-slot-2-ffff0000");
     }
 }
