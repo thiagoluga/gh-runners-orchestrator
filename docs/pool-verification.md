@@ -263,3 +263,11 @@ Docker/dependency cache warmth and artifact failures also affect durations. The 
 head changes storage and checks, so its sample is not a same-code benchmark. No average,
 speedup guarantee, heavy-load isolation or peak-memory conclusion follows from this table.
 Orchestrator restart or cancellation during a maozinha job was not tested.
+
+After this verification, the maintainer explicitly approved removal of the two original
+anonymous volumes. The bounded cleanup checked both exact names, creation timestamps,
+anonymous-volume labels and absence of container references before removing only those
+two volumes; its success result was read. The maintainer also requested leaving Insurapp
+on the pool: repository `CI_RUNNER=vm-pool` was set and read back. This supersedes the
+temporary-test selector state above. Required artifact uploads remain a separate blocker;
+no application promotion or production operation was performed.
