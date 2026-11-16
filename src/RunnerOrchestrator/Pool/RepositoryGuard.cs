@@ -25,9 +25,8 @@ internal sealed partial class RepositoryGuard(
         var allowed = new List<EnabledRepository>();
         foreach (var entry in entries)
         {
-            var reason = duplicates.Contains(entry.Name) ? "duplicate repository configuration"
-                : entry.MaxConcurrent < 0 ? "negative MaxConcurrent"
-                : await CheckAsync(entry.Name, cancellationToken).ConfigureAwait(false);
+            var reason = ConfigurationRefusal(entry, duplicates);
+            reason ??= await CheckAsync(entry.Name, cancellationToken).ConfigureAwait(false);
             if (reason is null)
             {
                 var parsed = RepositoryName.Parse(entry.Name);
@@ -41,6 +40,16 @@ internal sealed partial class RepositoryGuard(
         }
 
         return allowed;
+    }
+
+    private static string? ConfigurationRefusal(RepositoryOptions entry, HashSet<string> duplicates)
+    {
+        if (duplicates.Contains(entry.Name))
+        {
+            return "duplicate repository configuration";
+        }
+
+        return entry.MaxConcurrent < 0 ? "negative MaxConcurrent" : null;
     }
 
     private async Task<string?> CheckAsync(string configuredName, CancellationToken cancellationToken)

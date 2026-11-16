@@ -45,29 +45,30 @@ internal sealed partial class RunnerLauncher(
         string? containerId = null;
         try
         {
+            var labels = new Dictionary<string, string>
+            {
+                [ManagedLabels.Managed] = "true",
+                [ManagedLabels.Repository] = repository.ToString(),
+                [ManagedLabels.Slot] = slot.Name,
+                [ManagedLabels.RunnerName] = jit.RunnerName,
+                [ManagedLabels.RunnerId] = jit.RunnerId.ToString(CultureInfo.InvariantCulture),
+                [ManagedLabels.CreatedAt] = time.GetUtcNow().ToString("O", CultureInfo.InvariantCulture),
+            };
+            if (api.GetInstallationId(repository) is { } installationId)
+            {
+                labels[ManagedLabels.InstallationId] = installationId.ToString(CultureInfo.InvariantCulture);
+            }
+
             var spec = new ContainerSpec(
                 Name: name,
                 Image: settings.RunnerImage,
-                Labels: new Dictionary<string, string>
-                {
-                    [ManagedLabels.Managed] = "true",
-                    [ManagedLabels.Repository] = repository.ToString(),
-                    [ManagedLabels.Slot] = slot.Name,
-                    [ManagedLabels.RunnerName] = jit.RunnerName,
-                    [ManagedLabels.RunnerId] = jit.RunnerId.ToString(CultureInfo.InvariantCulture),
-                    [ManagedLabels.CreatedAt] = time.GetUtcNow().ToString("O", CultureInfo.InvariantCulture),
-                },
+                Labels: labels,
                 Environment: new Dictionary<string, string> { [JitConfigVariable] = jit.EncodedJitConfig },
                 Cpuset: slot.Cpuset,
                 MemoryBytes: memory,
                 NofileLimit: NofileLimit,
                 DockerSocket: settings.DockerSocket,
                 DockerSocketGroupId: settings.DockerSocketGroupId);
-            if (api.GetInstallationId(repository) is { } installationId)
-            {
-                ((Dictionary<string, string>)spec.Labels)[ManagedLabels.InstallationId] = installationId.ToString(CultureInfo.InvariantCulture);
-            }
-
             containerId = await runtime.CreateAsync(spec, cancellationToken).ConfigureAwait(false);
             await runtime.StartAsync(containerId, cancellationToken).ConfigureAwait(false);
             LogLaunched(logger, jit.RunnerName, jit.RunnerId, repository, slot.Name);

@@ -60,11 +60,9 @@ public sealed class InstallationRouterTests : IDisposable
         router.GetInstallationId(thiago.Name).Should().Be(42);
         router.GetInstallationId(mao.Name).Should().Be(84);
         var scoped = _handler.Requests.Where(r => r.Method == HttpMethod.Post && r.Body!.Contains("repositories", StringComparison.Ordinal));
-        foreach (var request in scoped)
-        {
-            using var body = JsonDocument.Parse(request.Body!);
-            body.RootElement.GetProperty("repositories").EnumerateArray().Select(e => e.GetString()).Should().Equal("shared");
-        }
+        var requestedRepositories = scoped.Select(request => RequestedRepositoryNames(request.Body!)).ToList();
+        requestedRepositories.Should().HaveCount(2);
+        requestedRepositories.Should().OnlyContain(names => names.SequenceEqual(new[] { "shared" }));
     }
 
     [Theory]
@@ -370,6 +368,12 @@ public sealed class InstallationRouterTests : IDisposable
                 ["x-ratelimit-remaining"] = _lowBudget && owner == "maozinha" ? "1" : "4999",
                 ["x-ratelimit-reset"] = _time.GetUtcNow().AddMinutes(1).ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture),
             }));
+    }
+
+    private static string?[] RequestedRepositoryNames(string requestBody)
+    {
+        using var body = JsonDocument.Parse(requestBody);
+        return body.RootElement.GetProperty("repositories").EnumerateArray().Select(e => e.GetString()).ToArray();
     }
 
     private static string RepositoryList(string owner, string name, bool isPrivate) =>
