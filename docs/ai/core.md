@@ -33,13 +33,17 @@ or third-party repositories, autoscaling of hosts.
 - Branch from `main`, PR to `main`, one open PR at a time, PRs grouped per phase; merge
   when every required check is green and every thread is resolved. Documentation-only
   changes go straight to `main`, without a PR; CI ignores them
-  ([ADR 0007](../adr/0007-branching-and-delivery.md)).
-- Conventional Commits. Author Thiago, committer Claude:
-  `GIT_COMMITTER_NAME=Claude GIT_COMMITTER_EMAIL=noreply@anthropic.com git commit`
-  with the repo-local identity `Thiago Lugarini <thiagoluga@hotmail.com>`. Trailer
-  `Co-Authored-By: Claude <model> <noreply@anthropic.com>`. Never `--no-verify`.
-- Before a code commit: build, tests and format green, `/code-review` and
-  `/security-review` on the diff, fix what is real.
+  ([ADR 0007](../adr/0007-branching-and-delivery.md)). If the maintainer explicitly asks
+  for a documentation PR, use a branch and PR; PR checks run even for documentation.
+  See [ADR 0010](../adr/0010-agent-compatible-contribution-workflow.md).
+  Leave merging to the maintainer when requested.
+- Conventional Commits. Author: repo-local identity
+  `Thiago Lugarini <thiagoluga@hotmail.com>`. Use the active agent's committer identity
+  and co-author trailer from its entry point (`AGENTS.md` for Codex, `CLAUDE.md` for
+  Claude). Never impersonate another agent or invent a model name. Never `--no-verify`.
+- Before a code or workflow commit: build, tests and format green. Before every commit,
+  review the full pending diff for correctness and security using the active agent's
+  entry point. Fix real findings and report unavailable checks honestly.
 - After push: CI green, Sonar at zero new issues, CodeQL clean, every review thread
   answered and resolved.
 - Packages: only the approved list in [ADR 0003](../adr/0003-stack-dotnet-worker-service.md).
