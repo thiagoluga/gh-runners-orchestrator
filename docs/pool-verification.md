@@ -141,3 +141,55 @@ This accepts the new binary with legacy thiagoluga configuration only. No maozin
 App key, repository-list entry or consumer workflow was activated. Two-App real-host
 acceptance remains pending key provisioning, verified installation metadata and a separately
 reviewed/approved registry/Compose configuration diff.
+
+## Separate private Apps activated
+
+On 2026-11-16, after explicit stage-2 approval, the reviewed registry configuration was
+applied to the same accepted `3a1e352` image. No new binary or runner image was installed.
+
+- Authenticated metadata verified private App `maozinha-runner-pool`, App ID `5783289`,
+  owned by maozinha; installation `182542055` is selected-repository, not suspended, and
+  covers **only private maozinha/insurapp**. App and installation permissions were exactly
+  Actions read, Administration write and Metadata read; no events. The authenticated App
+  lookup succeeded while its unauthenticated public lookup returned 404.
+- The new key was provisioned host-only at
+  `/etc/gh-runners-orchestrator/github-app-maozinha.pem`, UID/GID `1654:1654`, mode `0400`.
+  Only filesystem metadata was displayed; secret values were never printed. The private
+  incoming staging file was removed. The original thiagoluga key was left in place.
+- Base Compose now pins the accepted immutable image directly and mounts both keys
+  read-only. Inspection showed the orchestrator running with restart count 0 and both
+  secret mounts at `RW=false`. The temporary stage-1 image override is no longer required
+  for normal `docker compose` commands.
+- All existing repositories/caps, labels and two global slots were preserved. Only
+  maozinha/insurapp was appended, at `MaxConcurrent: 1`. The existing thiagoluga installation
+  is `182223102`; each account selects its own App, installation and key path.
+- At 12:06:02 and 12:06:04 UTC startup logs confirmed separate token renewals for
+  installations `182223102` and `182542055`. Subsequent cycles included all four qualified
+  repositories and separate thiagoluga/maozinha rate budgets. No repository refusal appeared
+  in the inspected startup/stable cycles.
+- Regression [smoke run 43863527100](https://github.com/thiagoluga/runner-pool-sandbox/actions/runs/43863527100)
+  passed on the same sandbox commit `9573ec293cfdb6ef4ffd355db674404bbe53f060`, label `vm-pool`,
+  job duration 7 seconds. Runner
+  `orch-thiagoluga-runner-pool-sandbox-slot-1-c6485a67` measured 5 cores (`0-4`),
+  `17179869184` bytes of memory limit and `nofile=65536`; JIT was absent from the job
+  environment and Docker hello-world passed.
+- At 12:07:00 UTC the orchestrator recorded exit code 0 and automatic container removal.
+  At 12:07:08 and 12:07:27 UTC stable cycles returned to `0/2` slots; the later managed
+  container listing was empty.
+
+The stage-2 backup is
+`/home/ci/gh-runners-orchestrator/backups/20261116-3a1e352-multi-app/`.
+Rollback must drain/reap maozinha resources with its binding/key still available, verify no
+managed registrations remain through that App, then restore the legacy configuration with
+the saved stage-1 image override. No unrelated resource, key, image or volume is removed.
+Rollback commands were prepared and syntax-checked, not executed.
+
+`maozinha/insurapp` remains private and `CI_RUNNER` remains `gh`. No consumer workflow was
+modified, dispatched or cancelled. Two pre-existing queued consumer runs were observed
+without materialized jobs. No artifact/cache/storage policy or GitHub spending was changed.
+
+This verifies both App identities, separate startup tokens, repository admission/stable
+polling and preservation of thiagoluga execution/cleanup. A real maozinha JIT/job, two-account
+simultaneous load, restart during a maozinha job, and hourly renewal/failure acceptance
+remain pending. Unit-test coverage is not substituted for those live scenarios. Insurapp
+onboarding and cross-project interference analysis remain a separate task.

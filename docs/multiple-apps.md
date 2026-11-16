@@ -4,7 +4,8 @@
 GitHub Apps without making them public. Keep `thiagoluga-runner-pool` private. Create a
 separate private App owned by maozinha, installed only on its private insurapp repository.
 App creation, key provisioning, installation and deployment remain maintainer steps.
-This change performs none of them and does not modify Insurapp or CI_RUNNER.
+The implementation PR performed none of them. The approved reference-host activation is
+recorded below; Insurapp source and CI_RUNNER were not modified.
 
 ## Shape and compatibility
 
@@ -28,8 +29,9 @@ For the new registry, omit `Owner` and `GitHubApp`, then use:
 ```
 
 **Every zero is an intentionally invalid placeholder** requiring verified metadata.
-App ID and installation ID are different numbers. The actual maozinha App and both
-installation IDs remain unverified; do not deploy the example unchanged.
+App ID and installation ID are different numbers. Verified reference-host IDs are recorded
+below; the zeros remain example placeholders.
+Do not deploy the example unchanged.
 [The complete configuration example](../deploy/config/orchestrator.apps.example.json)
 retains the two slots, image and labels. Preserve the actual repository list, including
 saas-foundry at MaxConcurrent=1; append insurapp at 1 only after its installation is verified.
@@ -78,7 +80,8 @@ port/container/volume conflicts (issue 35).
 
 ## Approval, migration and rollback
 
-No host changes were performed. The previously observed configuration and restrictions
+The implementation PR performed no host changes. For the approved activation, see the
+reference-host record below. The previously observed configuration and restrictions
 in [multi-account.md](multi-account.md) still apply, with separate private Apps replacing
 the previously proposed public/multi-installation App. Publishing an App is unnecessary.
 
@@ -112,3 +115,27 @@ and reserve their slots. Removing a registration cannot redirect cleanup to anot
 No host cleanup, prune, credential rotation, spending change or consumer migration is
 part of this implementation. External artifact storage remains a separate task with
 private access and byte/count/retention limits; mandatory uploads are not weakened.
+
+## Reference host activation (2026-11-16)
+
+The maintainer approved stage 2 after the legacy regression smoke passed. The host now
+runs the accepted immutable `3a1e352` image, with this explicit registry/account mapping:
+
+| Owner | App ID | Installation ID | Container key path |
+|---|---|---|---|
+| thiagoluga | 5770327 | 182223102 | /run/secrets/github-app.pem |
+| maozinha | 5783289 | 182542055 | /run/secrets/github-app-maozinha.pem |
+
+This deployment preserves the existing single-file thiagoluga secret mount and adds a
+second read-only Compose secret instead of relocating its key into the example directory.
+The maozinha host file is `/etc/gh-runners-orchestrator/github-app-maozinha.pem`, `0400`,
+UID/GID `1654:1654`. Base Compose directly pins the same accepted image digest; ordinary
+Compose operations no longer depend on the temporary stage-1 override. The original
+`.env` is unchanged and its previous mutable image tag no longer selects the deployed image.
+
+The authenticated maozinha metadata check confirmed private visibility, the expected
+permissions, no events and access only to private insurapp. Both installations renewed
+separate startup tokens and appeared in stable cycles. The thiagoluga regression smoke
+passed with the existing limits and its runner was automatically removed. Insurapp still
+uses `CI_RUNNER=gh`; no real maozinha job has run on the pool yet. Full measured evidence,
+backup paths and pending live scenarios are in [pool-verification.md](pool-verification.md#separate-private-apps-activated).
