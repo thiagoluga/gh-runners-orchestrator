@@ -317,3 +317,9 @@ The accepted run left no CI container, volume or network. An older canceled run,
 `insurapp-sdk-43949007021-1_default`. Both have matching project labels and creation
 at 20:58:40 UTC; no container references/endpoints exist. These two resources remain
 untouched pending explicit bounded cleanup approval. No broad prune is proposed.
+
+The maintainer subsequently approved exactly those two removals. Rechecked immutable
+network ID, creation times, project labels and absence of references/endpoints, then
+removed only that named volume and network. The success result was read. Final inspection
+found zero managed runner containers, transient CI containers/networks or new volumes
+since deployment; the pinned orchestrator remained running with zero restarts.
