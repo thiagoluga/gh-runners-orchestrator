@@ -1,0 +1,46 @@
+{
+  "Orchestrator": {
+    "PollInterval": "00:00:20",
+    "IdleRunnerTimeout": "00:10:00",
+    "RunnerLabels": [
+      "vm-pool",
+      "vm-dev"
+    ],
+    "RunnerImage": "ghcr.io/thiagoluga/gh-runners-orchestrator-runner:2.338.2",
+    "DockerSocket": "/var/run/docker.sock",
+    "Slots": [
+      {
+        "Name": "slot-1",
+        "Cpuset": "0-4",
+        "Memory": "16g"
+      },
+      {
+        "Name": "slot-2",
+        "Cpuset": "5-9",
+        "Memory": "16g"
+      }
+    ],
+    "GitHubApps": [
+      {
+        "AppId": 5770327,
+        "PrivateKeyPath": "/run/secrets/github-apps/thiagoluga.pem"
+      },
+      {
+        "AppId": 0,
+        "PrivateKeyPath": "/run/secrets/github-apps/maozinha.pem"
+      }
+    ],
+    "Accounts": [
+      {
+        "Owner": "thiagoluga",
+        "AppId": 5770327,
+        "InstallationId": 0
+      },
+      {
+        "Owner": "maozinha",
+        "AppId": 0,
+        "InstallationId": 0
+      }
+    ]
+  }
+}

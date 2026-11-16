@@ -7,6 +7,10 @@ versions follow [Semantic Versioning](https://semver.org/) from the first releas
 
 ### Added
 
+- Configurable GitHub App registry with explicit per-account App bindings and independent
+  keys, preserving single-App configurations and global capacity. Includes private-App
+  deployment examples and safe handling of local key failures.
+
 - Optional explicit account/installation configuration sharing the same global capacity;
   legacy single-owner configuration remains supported. Tokens, caches, rate limits and
   failures are isolated by installation; cleanup validates qualified identity and labels.

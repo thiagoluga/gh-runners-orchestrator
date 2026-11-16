@@ -106,7 +106,8 @@ internal sealed record ManagedRunner(
     string RunnerName,
     long? RunnerId,
     DateTimeOffset? CreatedAt,
-    long? InstallationId = null);
+    long? InstallationId = null,
+    long? AppId = null);
 
 internal sealed record OrphanRunner(RepositoryName Repository, SelfHostedRunner Runner);
 

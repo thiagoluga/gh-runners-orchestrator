@@ -109,3 +109,9 @@ Disabling is the reverse; jobs already running finish.
 ## Decisions
 
 See [docs/adr/](adr/README.md).
+
+## Multiple private Apps
+
+See [multiple-apps.md](multiple-apps.md) for the App registry, explicit account bindings,
+legacy configuration compatibility, key mounts and deployment/rollback approval gates.
+The original App can remain private; do not change its visibility for this option.

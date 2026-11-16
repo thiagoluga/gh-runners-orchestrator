@@ -22,14 +22,17 @@ internal sealed class InstallationRouter : IGitHubRunnerApi, IDisposable
         _repositories = repositories;
         foreach (var account in options.Value.EffectiveAccounts())
         {
+            var app = options.Value.AppFor(account);
             var credentials = new GitHubAppCredentials(http, options, repositories, time,
-                loggers.CreateLogger<GitHubAppCredentials>(), account);
-            _clients.Add(account.Owner, new InstallationClient(credentials, new GitHubRunnerApi(http, credentials)));
+                loggers.CreateLogger<GitHubAppCredentials>(), account, app);
+            _clients.Add(account.Owner, new InstallationClient(credentials, new GitHubRunnerApi(http, credentials), app.AppId));
         }
     }
 
     // A global budget would suspend healthy installations when another one is exhausted.
     public RateLimitStatus? RateLimit => null;
+
+    public long? GetAppId(RepositoryName repository) => Find(repository).AppId;
 
     public long? GetInstallationId(RepositoryName repository) => Find(repository).Credentials.InstallationId;
 
@@ -160,7 +163,7 @@ internal sealed class InstallationRouter : IGitHubRunnerApi, IDisposable
     }
 
     private static bool IsUnavailable(Exception exception, CancellationToken cancellationToken) =>
-        exception is GitHubApiException or System.Text.Json.JsonException or HttpRequestException
+        exception is GitHubApiException or GitHubCredentialException or System.Text.Json.JsonException or HttpRequestException
         || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested);
 
     private static void BackOff(InstallationClient client, DateTimeOffset now)
@@ -170,8 +173,10 @@ internal sealed class InstallationRouter : IGitHubRunnerApi, IDisposable
         client.RetryAfter = now + TimeSpan.FromSeconds(20);
     }
 
-    private sealed class InstallationClient(GitHubAppCredentials credentials, GitHubRunnerApi api)
+    private sealed class InstallationClient(GitHubAppCredentials credentials, GitHubRunnerApi api, long appId)
     {
+        public long AppId { get; } = appId;
+
         public GitHubAppCredentials Credentials { get; } = credentials;
 
         public GitHubRunnerApi Api { get; } = api;

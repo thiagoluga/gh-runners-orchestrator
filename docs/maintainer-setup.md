@@ -121,3 +121,9 @@ gh api /repos/thiagoluga/gh-runners-orchestrator/actions/secrets --jq '.secrets[
 
 The App's permissions and installation list are read with a JWT on the host, in the proof
 of concept.
+
+## Multiple private Apps
+
+See [multiple-apps.md](multiple-apps.md) for the App registry, explicit account bindings,
+legacy configuration compatibility, key mounts and deployment/rollback approval gates.
+The original App can remain private; do not change its visibility for this option.

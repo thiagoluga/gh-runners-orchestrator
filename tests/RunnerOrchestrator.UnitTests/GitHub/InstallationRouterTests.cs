@@ -1,3 +1,4 @@
+using System.Buffers.Text;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -14,6 +15,8 @@ namespace RunnerOrchestrator.UnitTests.GitHub;
 public sealed class InstallationRouterTests : IDisposable
 {
     private readonly string _keyPath = Path.Join(Path.GetTempPath(), $"router-test-{Guid.NewGuid():N}.pem");
+    private readonly string _secondKeyPath = Path.Join(Path.GetTempPath(), $"router-second-app-{Guid.NewGuid():N}.pem");
+    private bool _multipleApps;
     private readonly FakeHttpHandler _handler = new();
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 16, 12, 0, 0, TimeSpan.Zero));
     private readonly MutableOptionsMonitor<RepositoryListOptions> _repositories = TestOptions.Monitor(TestOptions.Repositories("thiagoluga/shared", "maozinha/shared"));
@@ -31,6 +34,8 @@ public sealed class InstallationRouterTests : IDisposable
     {
         using var key = RSA.Create(2048);
         File.WriteAllText(_keyPath, key.ExportRSAPrivateKeyPem());
+        using var secondKey = RSA.Create(2048);
+        File.WriteAllText(_secondKeyPath, secondKey.ExportRSAPrivateKeyPem());
         _options = TestOptions.Orchestrator(_keyPath);
         _options.Owner = string.Empty;
         _options.Accounts.Add(new AccountOptions { Owner = "thiagoluga", InstallationId = 42 });
@@ -112,9 +117,16 @@ public sealed class InstallationRouterTests : IDisposable
         await router.GetRepositoryAsync(new("thiagoluga", "shared"), TestContext.Current.CancellationToken);
     }
 
-    [Fact]
-    public async Task Renewal_IsPerAccount_RevokesOnlyItsReplacedToken()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Renewal_IsPerAccount_RevokesOnlyItsReplacedToken(bool multipleApps)
     {
+        if (multipleApps)
+        {
+            UseMultipleApps();
+        }
+
         using var router = Create();
         await router.GetRepositoryAsync(new("thiagoluga", "shared"), TestContext.Current.CancellationToken);
         _time.Advance(TimeSpan.FromMinutes(10));
@@ -160,9 +172,16 @@ public sealed class InstallationRouterTests : IDisposable
         await router.GetRepositoryAsync(new("thiagoluga", "shared"), TestContext.Current.CancellationToken);
     }
 
-    [Fact]
-    public async Task LowBudget_OnlyBacksOffItsAccount_AndResumesAfterReset()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LowBudget_OnlyBacksOffItsAccount_AndResumesAfterReset(bool multipleApps)
     {
+        if (multipleApps)
+        {
+            UseMultipleApps();
+        }
+
         _lowBudget = true;
         using var router = Create();
         await router.GetRepositoryAsync(new("maozinha", "shared"), TestContext.Current.CancellationToken);
@@ -200,9 +219,16 @@ public sealed class InstallationRouterTests : IDisposable
         _handler.Requests.Should().NotContain(r => r.Uri.AbsolutePath.Contains("maozinha", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task GlobalCycle_TwoAccountsWithSameRepositoryName_ShareTwoSlotsAcrossRestart()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GlobalCycle_TwoAccountsWithSameRepositoryName_ShareTwoSlotsAcrossRestart(bool multipleApps)
     {
+        if (multipleApps)
+        {
+            UseMultipleApps();
+        }
+
         foreach (var entry in _repositories.CurrentValue.Repositories)
         {
             entry.MaxConcurrent = 1;
@@ -270,9 +296,16 @@ public sealed class InstallationRouterTests : IDisposable
         _handler.Requests.Should().NotContain(r => r.Method == HttpMethod.Delete && r.Uri.AbsolutePath.StartsWith("/repos/", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task Cleanup_AfterRepositoryRemovalAndRestart_StaysQualifiedToItsInstallation()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cleanup_AfterRepositoryRemovalAndRestart_StaysQualifiedToItsInstallation(bool multipleApps)
     {
+        if (multipleApps)
+        {
+            UseMultipleApps();
+        }
+
         using (var before = Create())
         {
             await before.GetRepositoryAsync(new("thiagoluga", "shared"), TestContext.Current.CancellationToken);
@@ -301,9 +334,16 @@ public sealed class InstallationRouterTests : IDisposable
         _handler.Requests.Should().NotContain(r => r.Uri.AbsolutePath.EndsWith("generate-jitconfig", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task Cleanup_SameNumericRunnerIdInTwoAccounts_UsesTheMatchingInstallationToken()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cleanup_SameNumericRunnerIdInTwoAccounts_UsesTheMatchingInstallationToken(bool multipleApps)
     {
+        if (multipleApps)
+        {
+            UseMultipleApps();
+        }
+
         _handler.On(HttpMethod.Delete, "/repos/thiagoluga/shared/actions/runners/7", HttpStatusCode.NoContent);
         _handler.On(HttpMethod.Delete, "/repos/maozinha/shared/actions/runners/7", HttpStatusCode.NoContent);
         using var router = Create();
@@ -313,6 +353,165 @@ public sealed class InstallationRouterTests : IDisposable
             .Select(r => (r.Uri.AbsolutePath, r.Authorization)).Should().Equal(
                 ("/repos/thiagoluga/shared/actions/runners/7", "Bearer fake-thiagoluga-scoped-1"),
                 ("/repos/maozinha/shared/actions/runners/7", "Bearer fake-maozinha-scoped-1"));
+    }
+
+    [Fact]
+    public async Task RegisteredApps_UseTheirOwnAppIdKeyAndInstallationForJwtSigning()
+    {
+        UseMultipleApps();
+        using var router = Create();
+        await router.GetRepositoryAsync(new("thiagoluga", "shared"), TestContext.Current.CancellationToken);
+        await router.GetRepositoryAsync(new("maozinha", "shared"), TestContext.Current.CancellationToken);
+        var requests = _handler.Requests.Where(r => r.Uri.AbsolutePath.EndsWith("/installation", StringComparison.Ordinal)).ToList();
+        VerifyJwt(requests[0].Authorization!, 12345, _keyPath, _secondKeyPath);
+        VerifyJwt(requests[1].Authorization!, 67890, _secondKeyPath, _keyPath);
+        router.GetAppId(new("maozinha", "shared")).Should().Be(67890);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("malformed")]
+    [InlineData("public-only")]
+    public async Task RegisteredApp_KeyFailure_DoesNotLeakContentOrStopHealthyApp(string failure)
+    {
+        UseMultipleApps();
+        if (failure == "missing")
+        {
+            File.Delete(_secondKeyPath);
+        }
+        else
+        {
+            using var key = RSA.Create(2048);
+            File.WriteAllText(_secondKeyPath, failure == "public-only" ? key.ExportSubjectPublicKeyInfoPem() : "PRIVATE-KEY-CONTENT-MUST-NOT-LEAK");
+        }
+
+        using var router = Create();
+        var act = () => router.GetRepositoryAsync(new("maozinha", "shared"), TestContext.Current.CancellationToken);
+        var thrown = await act.Should().ThrowAsync<GitHubCredentialException>();
+        thrown.Which.ToString().Should().NotContain("PRIVATE-KEY-CONTENT-MUST-NOT-LEAK").And.NotContain("-----BEGIN");
+        await router.GetRepositoryAsync(new("thiagoluga", "shared"), TestContext.Current.CancellationToken);
+        _handler.Requests.Should().NotContain(r => r.Uri.AbsolutePath.Contains("maozinha", StringComparison.Ordinal));
+        var runtime = Substitute.For<IContainerRuntime>();
+        runtime.ListByLabelAsync(ManagedLabels.ManagedFilter, Arg.Any<CancellationToken>()).Returns([]);
+        runtime.CreateAsync(Arg.Any<ContainerSpec>(), Arg.Any<CancellationToken>()).Returns("created");
+        await Cycle(router, runtime).RunOnceAsync(TestContext.Current.CancellationToken);
+        await runtime.Received(2).CreateAsync(Arg.Is<ContainerSpec>(spec => spec.Labels[ManagedLabels.AppId] == "12345"), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RegisteredApp_MetadataNamesAnotherApp_RefusesWithoutTryingItsKey()
+    {
+        UseMultipleApps();
+        _installationOverride = """{"id":84,"app_id":12345,"account":{"login":"maozinha"}}""";
+        using var router = Create();
+        var act = () => router.GetRepositoryAsync(new("maozinha", "shared"), TestContext.Current.CancellationToken);
+        await act.Should().ThrowAsync<GitHubApiException>();
+        _handler.Requests.Should().NotContain(r => r.Method == HttpMethod.Post);
+        await router.GetRepositoryAsync(new("thiagoluga", "shared"), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task RegisteredApps_CanExceedTwoWithoutIncreasingGlobalSlots()
+    {
+        UseMultipleApps();
+        for (var i = 0; i < 3; i++)
+        {
+            var owner = $"account{i}";
+            _options.GitHubApps.Add(new GitHubAppOptions { AppId = 70000 + i, PrivateKeyPath = _secondKeyPath });
+            _options.Accounts.Add(new AccountOptions { Owner = owner, InstallationId = 100 + i, AppId = 70000 + i });
+            _repositories.CurrentValue.Repositories.Add(new RepositoryOptions { Name = $"{owner}/shared", MaxConcurrent = 1 });
+            AddAccount(owner, 100 + i);
+        }
+
+        foreach (var repository in _repositories.CurrentValue.Repositories)
+        {
+            repository.MaxConcurrent = 1;
+        }
+
+        using var router = Create();
+        foreach (var repository in _repositories.CurrentValue.Repositories)
+        {
+            await router.GetRepositoryAsync(RepositoryName.Parse(repository.Name), TestContext.Current.CancellationToken);
+        }
+
+        var runtime = Substitute.For<IContainerRuntime>();
+        runtime.ListByLabelAsync(ManagedLabels.ManagedFilter, Arg.Any<CancellationToken>()).Returns([]);
+        runtime.CreateAsync(Arg.Any<ContainerSpec>(), Arg.Any<CancellationToken>()).Returns("created");
+        await Cycle(router, runtime).RunOnceAsync(TestContext.Current.CancellationToken);
+        await runtime.Received(2).CreateAsync(Arg.Any<ContainerSpec>(), Arg.Any<CancellationToken>());
+        _versions.Keys.Should().HaveCount(5);
+        new OrchestratorOptionsValidator().Validate(null, _options).Succeeded.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("999")]
+    [InlineData("invalid")]
+    public async Task RegisteredApps_CleanupWithWrongAppLabel_LeavesContainerAndSlotUntouched(string appLabel)
+    {
+        UseMultipleApps();
+        var labels = new Dictionary<string, string>
+        {
+            [ManagedLabels.Repository] = "maozinha/shared",
+            [ManagedLabels.Slot] = "slot-1",
+            [ManagedLabels.InstallationId] = "84",
+            [ManagedLabels.AppId] = appLabel,
+        };
+        var runtime = Substitute.For<IContainerRuntime>();
+        runtime.ListByLabelAsync(ManagedLabels.ManagedFilter, Arg.Any<CancellationToken>())
+            .Returns([new ContainerSummary("old", "orch-old", "exited", labels)]);
+        runtime.CreateAsync(Arg.Any<ContainerSpec>(), Arg.Any<CancellationToken>()).Returns("created");
+        using var router = Create();
+        await Cycle(router, runtime).RunOnceAsync(TestContext.Current.CancellationToken);
+        await runtime.DidNotReceiveWithAnyArgs().RemoveAsync(default!, TestContext.Current.CancellationToken);
+        await runtime.Received(1).CreateAsync(Arg.Is<ContainerSpec>(s => s.Labels[ManagedLabels.Slot] == "slot-2"), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RegisteredApps_InstallationLabelFromPreviousVersion_RemainsManageable()
+    {
+        UseMultipleApps();
+        var labels = new Dictionary<string, string>
+        {
+            [ManagedLabels.Repository] = "maozinha/shared",
+            [ManagedLabels.Slot] = "slot-1",
+            [ManagedLabels.InstallationId] = "84",
+        };
+        var runtime = Substitute.For<IContainerRuntime>();
+        runtime.ListByLabelAsync(ManagedLabels.ManagedFilter, Arg.Any<CancellationToken>())
+            .Returns([new ContainerSummary("previous", "orch-previous", "exited", labels)]);
+        runtime.InspectAsync("previous", Arg.Any<CancellationToken>()).Returns(new ContainerState("exited", 0, null, null));
+        runtime.CreateAsync(Arg.Any<ContainerSpec>(), Arg.Any<CancellationToken>()).Returns("created");
+        using var router = Create();
+        await Cycle(router, runtime).RunOnceAsync(TestContext.Current.CancellationToken);
+        await runtime.Received(1).RemoveAsync("previous", Arg.Any<CancellationToken>());
+    }
+
+    private void UseMultipleApps()
+    {
+        _multipleApps = true;
+        _options.GitHubApps.Add(new GitHubAppOptions { AppId = 12345, PrivateKeyPath = _keyPath });
+        _options.GitHubApps.Add(new GitHubAppOptions { AppId = 67890, PrivateKeyPath = _secondKeyPath });
+        _options.GitHubApp = new GitHubAppOptions();
+        _options.Accounts[0].AppId = 12345;
+        _options.Accounts[1].AppId = 67890;
+    }
+
+    private long AppIdFor(string owner) => _multipleApps
+        ? _options.Accounts.Single(a => a.Owner == owner).AppId : 12345;
+
+    private static void VerifyJwt(string authorization, long appId, string keyPath, string otherKeyPath)
+    {
+        var parts = authorization["Bearer ".Length..].Split('.');
+        using var payload = JsonDocument.Parse(Base64Url.DecodeFromChars(parts[1]));
+        payload.RootElement.GetProperty("iss").GetString().Should().Be(appId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        using var key = RSA.Create();
+        key.ImportFromPem(File.ReadAllText(keyPath));
+        var input = System.Text.Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}");
+        var signature = Base64Url.DecodeFromChars(parts[2]);
+        key.VerifyData(input, signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1).Should().BeTrue();
+        using var other = RSA.Create();
+        other.ImportFromPem(File.ReadAllText(otherKeyPath));
+        other.VerifyData(input, signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1).Should().BeFalse();
     }
 
     private PoolCycle Cycle(IGitHubRunnerApi api, IContainerRuntime runtime)
@@ -329,7 +528,7 @@ public sealed class InstallationRouterTests : IDisposable
         _handler.On(HttpMethod.Get, $"/users/{owner}/installation", _ =>
             FakeHttpHandler.Json(_revoked && owner == "maozinha" ? HttpStatusCode.NotFound : HttpStatusCode.OK,
                 owner == "maozinha" && _installationOverride is not null ? _installationOverride
-                    : $$$"""{"id":{{{id}}},"app_id":12345,"account":{"login":"{{{owner}}}"}}"""));
+                    : $$$"""{"id":{{{id}}},"app_id":{{{AppIdFor(owner)}}},"account":{"login":"{{{owner}}}"}}"""));
         _handler.On(HttpMethod.Post, $"/app/installations/{id}/access_tokens", request =>
         {
             var scoped = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult().Contains("repositories", StringComparison.Ordinal);
@@ -385,6 +584,7 @@ public sealed class InstallationRouterTests : IDisposable
     public void Dispose()
     {
         File.Delete(_keyPath);
+        File.Delete(_secondKeyPath);
         _handler.Dispose();
     }
 }

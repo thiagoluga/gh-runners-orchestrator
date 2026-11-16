@@ -34,7 +34,7 @@ builder.Services.AddSingleton<IValidateOptions<OrchestratorOptions>, Orchestrato
 builder.Services.AddOptions<RepositoryListOptions>().Bind(builder.Configuration);
 
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton(sp => GitHubHttp.CreateClient(sp.GetRequiredService<IOptions<OrchestratorOptions>>().Value.GitHubApp.ApiBaseUrl));
+builder.Services.AddSingleton(sp => GitHubHttp.CreateClient(sp.GetRequiredService<IOptions<OrchestratorOptions>>().Value.EffectiveApps().First().ApiBaseUrl));
 builder.Services.AddSingleton<IGitHubRunnerApi, InstallationRouter>();
 builder.Services.AddSingleton<IContainerRuntime>(sp => DockerEngineClient.ForSocket(sp.GetRequiredService<IOptions<OrchestratorOptions>>().Value.DockerSocket));
 builder.Services.AddSingleton<PoolBoundaries>();

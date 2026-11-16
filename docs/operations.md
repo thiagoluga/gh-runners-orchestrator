@@ -133,3 +133,9 @@ again as soon as the first cycle runs.
 
 `docker compose down` stops the orchestrator only. Runners already running finish their job and
 stay as exited containers until the orchestrator runs again.
+
+## Multiple private Apps
+
+See [multiple-apps.md](multiple-apps.md) for the App registry, explicit account bindings,
+legacy configuration compatibility, key mounts and deployment/rollback approval gates.
+The original App can remain private; do not change its visibility for this option.

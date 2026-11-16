@@ -38,5 +38,17 @@ public sealed class OrchestratorOptions
 
     public GitHubAppOptions GitHubApp { get; set; } = new();
 
+    /// <summary>Optional App registry; mutually exclusive with a configured legacy GitHubApp.</summary>
+    public IList<GitHubAppOptions> GitHubApps { get; } = [];
+
+    public IEnumerable<GitHubAppOptions> EffectiveApps() => GitHubApps.Count == 0 ? [GitHubApp] : GitHubApps;
+
+    public GitHubAppOptions AppFor(AccountOptions account) => GitHubApps.Count == 0
+        ? GitHubApp
+        : GitHubApps.Single(app => app.AppId == account.AppId);
+
+    public GitHubAppOptions AppForOwner(string owner) => AppFor(EffectiveAccounts()
+        .Single(account => string.Equals(account.Owner, owner, StringComparison.OrdinalIgnoreCase)));
+
     public IList<SlotOptions> Slots { get; } = [];
 }
