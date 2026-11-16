@@ -99,8 +99,9 @@ internal sealed class OrchestratorOptionsValidator : IValidateOptions<Orchestrat
     {
         if (options.GitHubApps.Count > 0)
         {
-            if (options.GitHubApp.AppId != 0 || options.GitHubApp.PrivateKeyPath != "/run/secrets/github-app.pem"
-                || options.GitHubApp.ApiBaseUrl != new Uri("https://api.github.com/"))
+            var defaults = new GitHubAppOptions();
+            if (options.GitHubApp.AppId != defaults.AppId || options.GitHubApp.PrivateKeyPath != defaults.PrivateKeyPath
+                || options.GitHubApp.ApiBaseUrl != defaults.ApiBaseUrl)
             {
                 errors.Add("Use either GitHubApp or GitHubApps, never both.");
             }
