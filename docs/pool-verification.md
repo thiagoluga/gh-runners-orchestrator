@@ -193,3 +193,73 @@ polling and preservation of thiagoluga execution/cleanup. A real maozinha JIT/jo
 simultaneous load, restart during a maozinha job, and hourly renewal/failure acceptance
 remain pending. Unit-test coverage is not substituted for those live scenarios. Insurapp
 onboarding and cross-project interference analysis remain a separate task.
+
+## Live Insurapp execution and cross-App overlap
+
+On 2026-11-16, after explicit approval, Insurapp's repository `CI_RUNNER` was temporarily
+set to `vm-pool`. No merge, application deployment, App permission change or orchestrator
+restart was performed. The coordinator kept image digest `b0047fbc24917d9f26f6b719710cac506c1793bbd92ba2307d94be63e9bb577f`
+and restart count 0. The selector was restored to `gh` after each controlled run.
+
+First [Insurapp run 43910547807](https://github.com/maozinha/insurapp/actions/runs/43910547807)
+executed commit `e7ef6ea17466d0e65cf8267c55c0f49edf572926`. Four separate ephemeral runners,
+IDs 22-25, ran backend/web tests, container SDK, frontend build and Docker runtime checks.
+The repository stayed at one active job while another global slot was available.
+The inspected maozinha runner selected App 5783289/installation 182542055, cpuset `0-4`,
+memory `17179869184`, host networking and CPU quota/nano-CPU fields 0.
+
+While Insurapp ran, [sandbox smoke 43910945842](https://github.com/thiagoluga/runner-pool-sandbox/actions/runs/43910945842)
+passed on the unchanged sandbox commit `9573ec293cfdb6ef4ffd355db674404bbe53f060`.
+At 16:45:30 UTC, host inspection captured both accounts concurrently in distinct slots:
+maozinha in slot 1 and thiagoluga in slot 2, App 5770327/installation 182223102, cpuset
+`5-9`, the same 16 GiB runner limit and no CPU quota. The seven-second smoke confirmed
+five logical CPUs, `nofile=65536`, Docker hello-world and no JIT configuration in its job
+environment. Its runner was automatically removed at 16:46:00 UTC; Insurapp continued.
+This was a light overlap, not a heavy cross-project load or peak-capacity test. Runner
+limits do not constrain sibling containers created through the shared Docker daemon.
+
+Logs also showed five independent close-to-expiry renewals for each installation at
+approximately 13:01, 13:56, 14:51, 15:46 and 16:41 UTC. Only installation identifiers,
+expiry timestamps and renewal reasons were inspected; no credential value was displayed.
+
+The first live run exposed two anonymous PostgreSQL volumes surviving cleanup: Actions
+removed its service container without `--volumes`, and the initializer inherited the
+PostgreSQL image's unused data VOLUME across the data-preserving restart smoke. Empty
+runner and Compose-project inventories alone had missed this storage. The correction in
+[Insurapp PR 113](https://github.com/maozinha/insurapp/pull/113) uses tmpfs for both disposable
+data mounts, preserves named development/key volumes and adds mount regressions.
+
+Corrected [pool run 43915262671](https://github.com/maozinha/insurapp/actions/runs/43915262671)
+executed PR head `7f24072beea635c3920562ee6f8065cfcf2108b3`, using separate maozinha runners
+26-29. Disposable-storage assertions, non-root initialization, backend/web tests, format,
+container SDK and runtime/migration/restricted-role/restart checks passed. Sonar reported
+zero new issues, zero accepted issues and zero security hotspots. The only failed steps
+were required frontend/test-result artifact uploads, with the existing storage-quota error.
+The customer artifact build/upload after the first frontend upload was skipped; publication
+and deployment were not executed. Full consumer CI acceptance therefore remains blocked.
+
+At 17:23:06 UTC the managed runner listing was empty. Authenticated checks confirmed no
+managed maozinha registrations remained; the sandbox runner inventory was also empty.
+Both corrected-run Compose projects and its transient staging smoke had zero containers
+and volumes, the transient network was absent, and no dangling volume created since
+17:08 UTC remained. The two unused anonymous volumes from the first run were preserved
+pending explicit maintainer approval for their bounded removal. No global prune was run;
+Docker image/build caches were retained. `CI_RUNNER=gh` was read back after restoration.
+Subsequent cycles at 17:24 and 17:26 UTC reported `0/2` occupied slots.
+
+Observed job durations (minutes:seconds):
+
+| Job | Hosted `e7ef6ea` PR | Pool `e7ef6ea` dispatch | Pool `7f24072` PR |
+|---|---:|---:|---:|
+| build & test | 12:08 | 5:54 | 5:36 |
+| verify container SDK | 12:15 | 3:56 | 3:31 |
+| build frontend artifact | 1:15 | 0:45 | 0:45 |
+| docker build | 2:39 | 1:42 | 1:19 |
+
+The hosted reference is [run 43892827900](https://github.com/maozinha/insurapp/actions/runs/43892827900).
+These are single observations. The dispatch did not wait for the Sonar gate; PR runs did.
+Hosted jobs ran concurrently, whereas Insurapp pool jobs were serialized. Hardware,
+Docker/dependency cache warmth and artifact failures also affect durations. The corrected
+head changes storage and checks, so its sample is not a same-code benchmark. No average,
+speedup guarantee, heavy-load isolation or peak-memory conclusion follows from this table.
+Orchestrator restart or cancellation during a maozinha job was not tested.
