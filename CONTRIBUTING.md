@@ -42,3 +42,11 @@ generated keys and fake tokens.
 
 Use [Discussions](https://github.com/thiagoluga/gh-runners-orchestrator/discussions).
 Issues are for bugs and agreed work.
+
+## AI agents
+
+Codex starts with [AGENTS.md](AGENTS.md); Claude starts with [CLAUDE.md](CLAUDE.md).
+Both load [the shared rules](docs/ai/core.md), including security and host constraints.
+Agent-specific commit attribution and review methods live in those entry points.
+Documentation normally goes directly to `main`; use a PR when explicitly requested by
+the maintainer. Required checks run on documentation PRs too.
