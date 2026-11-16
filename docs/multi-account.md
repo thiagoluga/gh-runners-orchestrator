@@ -51,6 +51,13 @@ Compose, Buildx and Java 21. The runner user has no sudo grant. .NET/Node/Python
 setup per job; there is no persistent tool cache. Tools were not executed inside the
 deployed runner image, so this is not a new runtime verification of its contents.
 
+## Separate private Apps (preferred for thiagoluga and maozinha)
+
+The maintainer selected separate private Apps after confirming the original App only
+serves its owning account. Follow [multiple-apps.md](multiple-apps.md) and ADR 0012 for
+that configuration. The original shared-App option below remains supported but is not
+required; do not make the existing App public to follow the private-App plan.
+
 ## App installation gate
 
 Both owners are personal accounts (GitHub metadata checked 2026-11-16). The original

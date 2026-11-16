@@ -19,7 +19,8 @@ internal sealed partial class GitHubAppCredentials(
     IOptionsMonitor<RepositoryListOptions> repositories,
     TimeProvider time,
     ILogger<GitHubAppCredentials> logger,
-    AccountOptions? account = null) : IGitHubCredentialSource, IDisposable
+    AccountOptions? account = null,
+    GitHubAppOptions? app = null) : IGitHubCredentialSource, IDisposable
 {
     /// <summary>Renew this long before GitHub's one-hour expiry.</summary>
     public static readonly TimeSpan RenewBefore = TimeSpan.FromMinutes(5);
@@ -29,6 +30,8 @@ internal sealed partial class GitHubAppCredentials(
     /// so an App installed on it later is picked up without waiting for the hourly renewal.
     /// </summary>
     public static readonly TimeSpan UncoveredRescopeInterval = TimeSpan.FromMinutes(5);
+
+    private readonly GitHubAppOptions _app = app ?? options.Value.GitHubApp;
 
     private readonly AccountOptions _account = account ?? new AccountOptions { Owner = options.Value.Owner };
 
@@ -69,7 +72,7 @@ internal sealed partial class GitHubAppCredentials(
                 return _token!;
             }
 
-            var jwt = GitHubAppJwt.Create(options.Value.GitHubApp.AppId, LoadKey(), now);
+            var jwt = GitHubAppJwt.Create(_app.AppId, LoadKey(), now);
             _installationId = await FindInstallationAsync(jwt, cancellationToken).ConfigureAwait(false);
             var (response, covered) = await CreateTokenAsync(jwt, _installationId.Value, cancellationToken).ConfigureAwait(false);
             var previous = _token;
@@ -107,7 +110,7 @@ internal sealed partial class GitHubAppCredentials(
             return _key;
         }
 
-        var path = options.Value.GitHubApp.PrivateKeyPath;
+        var path = _app.PrivateKeyPath;
         string pem;
         try
         {
@@ -115,19 +118,20 @@ internal sealed partial class GitHubAppCredentials(
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            throw new InvalidOperationException($"The App private key is not readable at {path}.", exception);
+            throw new GitHubCredentialException($"The App private key is not readable at {path}.");
         }
 
         var key = RSA.Create();
         try
         {
             key.ImportFromPem(pem);
+            _ = key.ExportParameters(includePrivateParameters: true);
         }
-        catch (ArgumentException exception)
+        catch (Exception exception) when (exception is ArgumentException or CryptographicException)
         {
             key.Dispose();
             // The exception message of ImportFromPem never contains the key, but do not chain it either.
-            throw new InvalidOperationException($"The file at {path} is not a PEM private key ({exception.GetType().Name}).");
+            throw new GitHubCredentialException($"The file at {path} is not a PEM private key.");
         }
 
         _key = key;
@@ -142,7 +146,7 @@ internal sealed partial class GitHubAppCredentials(
         await GitHubHttp.EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
         var installation = await response.Content.ReadFromJsonAsync(GitHubJsonContext.Default.InstallationDto, cancellationToken).ConfigureAwait(false)
             ?? throw new GitHubApiException("GitHub returned an empty installation.");
-        if (installation.Id <= 0 || installation.AppId != options.Value.GitHubApp.AppId
+        if (installation.Id <= 0 || installation.AppId != _app.AppId
             || !string.Equals(installation.Account?.Login, owner, StringComparison.OrdinalIgnoreCase)
             || (_account.InstallationId > 0 && installation.Id != _account.InstallationId))
         {

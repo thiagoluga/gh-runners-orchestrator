@@ -1,0 +1,31 @@
+# Standalone multi-App example; use instead of compose.yaml, not as a second coordinator.
+# See docs/multiple-apps.md. The host-only directory holds the registered App keys.
+name: gh-runners-orchestrator
+
+services:
+  orchestrator:
+    image: ghcr.io/thiagoluga/gh-runners-orchestrator:${ORCHESTRATOR_TAG:?Set ORCHESTRATOR_TAG in .env}
+    restart: unless-stopped
+    # The orchestrator talks to the host Docker Engine; it runs as uid 1654 and needs the
+    # socket's group (stat -c %g /var/run/docker.sock).
+    group_add: ["${DOCKER_GID:?Set DOCKER_GID in .env}"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config:/app/config:ro
+      - type: bind
+        source: ${GITHUB_APPS_KEY_DIR:?Set GITHUB_APPS_KEY_DIR to the host-only App key directory}
+        target: /run/secrets/github-apps
+        read_only: true
+        bind:
+          create_host_path: false
+    environment:
+      SettingsFile: config/orchestrator.json
+      RepositoriesFile: config/repositories.json
+      # Picks up edits of the repository list made on the host, whatever the editor does to the file.
+      DOTNET_USE_POLLING_FILE_WATCHER: "true"
+      Orchestrator__DockerSocketGroupId: ${DOCKER_GID}
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"

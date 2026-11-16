@@ -16,3 +16,4 @@ A decision recorded here is not reopened without a new ADR that supersedes it. C
 | [0009](0009-central-controller-and-host-agents.md) | Central controller on the production VPS, outbound agents on runner hosts | Proposed |
 | [0010](0010-agent-compatible-contribution-workflow.md) | Codex and Claude entry points, explicit documentation PR checks | Accepted |
 | [0011](0011-multiple-account-installations.md) | One global pool with independently authenticated trusted account installations | Accepted |
+| [0012](0012-multiple-github-apps.md) | Configurable private GitHub App registry sharing one global pool | Accepted |

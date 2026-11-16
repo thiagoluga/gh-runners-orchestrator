@@ -70,7 +70,7 @@ internal sealed partial class RepositoryGuard(
         {
             info = await api.GetRepositoryAsync(name, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception exception) when (exception is GitHubApiException or System.Text.Json.JsonException or HttpRequestException
+        catch (Exception exception) when (exception is GitHubApiException or GitHubCredentialException or System.Text.Json.JsonException or HttpRequestException
             || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             return "not readable by the App installation";

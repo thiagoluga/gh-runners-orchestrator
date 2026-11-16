@@ -10,6 +10,8 @@ internal interface IGitHubRunnerApi
 
     RateLimitStatus? GetRateLimit(RepositoryName repository) => RateLimit;
 
+    long? GetAppId(RepositoryName repository) => null;
+
     long? GetInstallationId(RepositoryName repository) => null;
 
     Task<IReadOnlyList<RepositoryName>> ListCleanupRepositoriesAsync(CancellationToken cancellationToken) =>

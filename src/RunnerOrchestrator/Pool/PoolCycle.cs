@@ -317,6 +317,11 @@ internal sealed partial class PoolCycle(
             return false;
         }
 
+        if (runner.AppId is { } appId && appId != settings.AppForOwner(runner.Repository.Owner).AppId)
+        {
+            return false;
+        }
+
         if (runner.InstallationId is null)
         {
             return settings.Accounts.Count == 0;
@@ -329,7 +334,7 @@ internal sealed partial class PoolCycle(
 
     /// <summary>Failures of one runner that must not stop the cycle; a requested shutdown still does.</summary>
     private static bool IsTransient(Exception exception, CancellationToken cancellationToken) =>
-        exception is GitHubApiException or System.Text.Json.JsonException or DockerEngineException or HttpRequestException
+        exception is GitHubApiException or GitHubCredentialException or System.Text.Json.JsonException or DockerEngineException or HttpRequestException
         || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested);
 
     private static ManagedRunner? ToManagedRunner(ContainerSummary container)
@@ -351,15 +356,19 @@ internal sealed partial class PoolCycle(
         DateTimeOffset? createdAt = labels.TryGetValue(ManagedLabels.CreatedAt, out var createdLabel)
             && DateTimeOffset.TryParse(createdLabel, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var created) ? created : null;
         var runnerName = labels.TryGetValue(ManagedLabels.RunnerName, out var runnerLabel) ? runnerLabel : container.Name;
-        var installationId = labels.TryGetValue(ManagedLabels.InstallationId, out var installationLabel)
-            && long.TryParse(installationLabel, NumberStyles.None, CultureInfo.InvariantCulture, out var installation) ? installation : (long?)null;
-        // Invalid labels must not be treated as legacy labels.
-        if (labels.ContainsKey(ManagedLabels.InstallationId) && installationId is not > 0)
+        return new ManagedRunner(container.Id, name, slot, runnerName, runnerId, createdAt,
+            PositiveLabel(labels, ManagedLabels.InstallationId), PositiveLabel(labels, ManagedLabels.AppId));
+    }
+
+    private static long? PositiveLabel(IReadOnlyDictionary<string, string> labels, string key)
+    {
+        if (!labels.TryGetValue(key, out var value))
         {
-            installationId = -1;
+            return null;
         }
 
-        return new ManagedRunner(container.Id, name, slot, runnerName, runnerId, createdAt, installationId);
+        // A malformed identity must never be treated as an absent legacy label.
+        return long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0 ? id : -1;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Runner {RunnerName} of {Repository} finished with exit code {ExitCode} after {Duration}; container removed")]

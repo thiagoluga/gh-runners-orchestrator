@@ -54,6 +54,11 @@ internal sealed partial class RunnerLauncher(
                 [ManagedLabels.RunnerId] = jit.RunnerId.ToString(CultureInfo.InvariantCulture),
                 [ManagedLabels.CreatedAt] = time.GetUtcNow().ToString("O", CultureInfo.InvariantCulture),
             };
+            if (api.GetAppId(repository) is { } appId)
+            {
+                labels[ManagedLabels.AppId] = appId.ToString(CultureInfo.InvariantCulture);
+            }
+
             if (api.GetInstallationId(repository) is { } installationId)
             {
                 labels[ManagedLabels.InstallationId] = installationId.ToString(CultureInfo.InvariantCulture);
@@ -119,7 +124,7 @@ internal sealed partial class RunnerLauncher(
 
             await api.DeleteRunnerAsync(repository, jit.RunnerId, timeout.Token).ConfigureAwait(false);
         }
-        catch (Exception exception) when (exception is GitHubApiException or DockerEngineException or HttpRequestException or OperationCanceledException)
+        catch (Exception exception) when (exception is GitHubApiException or GitHubCredentialException or DockerEngineException or HttpRequestException or OperationCanceledException)
         {
             LogUndoFailed(logger, jit.RunnerName, exception.Message);
         }
