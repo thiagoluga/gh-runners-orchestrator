@@ -5,6 +5,11 @@ versions follow [Semantic Versioning](https://semver.org/) from the first releas
 
 ## Unreleased
 
+### Fixed
+
+- Detect queued runner jobs inside workflows marked `pending` by job concurrency, while
+  continuing to ignore jobs still blocked on concurrency or requiring other labels.
+
 ### Added
 
 - Configurable GitHub App registry with explicit per-account App bindings and independent
