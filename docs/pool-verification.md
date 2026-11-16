@@ -290,3 +290,30 @@ At 20:58:18 UTC the service started, running with zero restarts. Both App instal
 renewed successfully; at 20:58:32 it detected two queued Insurapp jobs inside the pending
 workflow and launched maozinha runner 32 in slot 1. This establishes discovery recovery;
 full current Insurapp CI/package acceptance remains separate and pending.
+
+## Full consumer package acceptance - 2026-11-16
+
+Insurapp [PR #113](https://github.com/maozinha/insurapp/pull/113), final head
+`219616be3737794d964feb59f3fa7692a8169c60`, passed
+[CI 43961422587](https://github.com/maozinha/insurapp/actions/runs/43961422587):
+SDK 3m40s, frontend 1m19s, runtime Docker 1m19s, backend 6m07s and independent read-only
+package acceptance 21s. Hosted-only ClamAV acceptance passed on the same head. No
+application deployment/publication job ran. Sonar reported zero new/accepted issues,
+zero hotspots, 90.4% new coverage and no new duplication; review threads were empty.
+The PR is ready for maintainer review/merge to `test`.
+
+The temporary private prerelease stored both sealed frontends (11,117,130 and
+11,129,268 bytes) and test evidence (2,454,360 bytes). The separate contents-read job
+actually downloaded all three and validated server digests, source/job identity and
+frontend manifests. Store inventory was 13 assets/71,655,640 bytes, within the explicit
+100-asset/512-MiB ceiling. Existing CI credentials suffice; no new dependency, App
+permission or paid allowance. Current variables remain `CI_RUNNER=vm-pool`,
+`CI_ARTIFACT_STORE=release`, `CI_ARTIFACT_RELEASE_ID=447382928`.
+
+At 21:49:07 UTC the pool returned to 0/2. Verified no managed runner container or
+maozinha managed registration remained; the service was running with zero restarts.
+The accepted run left no CI container, volume or network. An older canceled run,
+`43949007021`, left only unused `insurapp-sdk-43949007021-1_local-config` and network
+`insurapp-sdk-43949007021-1_default`. Both have matching project labels and creation
+at 20:58:40 UTC; no container references/endpoints exist. These two resources remain
+untouched pending explicit bounded cleanup approval. No broad prune is proposed.
