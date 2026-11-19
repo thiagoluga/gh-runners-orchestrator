@@ -323,3 +323,14 @@ network ID, creation times, project labels and absence of references/endpoints, 
 removed only that named volume and network. The success result was read. Final inspection
 found zero managed runner containers, transient CI containers/networks or new volumes
 since deployment; the pinned orchestrator remained running with zero restarts.
+
+## Host network outage - 2026-11-19
+
+`gh-runner-2` could not resolve `api.github.com` from 02:04 to 08:03 UTC (`Resource
+temporarily unavailable` on every repository each cycle); the VM itself stayed up. Nothing
+was restarted. At 08:03 both installations took a new token, the first cycles served the
+backlog (a sandbox job and five saas-foundry jobs queued during the outage) and no runner
+or container was left behind. Each renewal also warned that revoking the replaced token
+failed with 401: those tokens had expired during the outage. Fixed in
+[#43](https://github.com/thiagoluga/gh-runners-orchestrator/pull/43), merged, not yet
+deployed (deployment is a maintainer approval, [multiple-apps.md](multiple-apps.md)).
