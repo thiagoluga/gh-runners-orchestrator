@@ -76,6 +76,7 @@ internal sealed partial class GitHubAppCredentials(
             _installationId = await FindInstallationAsync(jwt, cancellationToken).ConfigureAwait(false);
             var (response, covered) = await CreateTokenAsync(jwt, _installationId.Value, cancellationToken).ConfigureAwait(false);
             var previous = _token;
+            var previousExpiresAt = _expiresAt;
             _token = response.Token;
             _expiresAt = response.ExpiresAt;
             _scopedFor = configured;
@@ -83,9 +84,10 @@ internal sealed partial class GitHubAppCredentials(
             _scopedAt = now;
             _invalidated = false;
             LogTokenRenewed(logger, _installationId.Value, _expiresAt, reason);
-            if (previous is not null)
+            if (previous is not null && previousExpiresAt > now)
             {
                 // Calls of the pool run one after another, so nothing still holds the old token.
+                // An expired one (after a network outage, for example) is already unusable.
                 await RevokeAsync(previous, cancellationToken).ConfigureAwait(false);
             }
 
@@ -230,7 +232,8 @@ internal sealed partial class GitHubAppCredentials(
         {
             using var request = GitHubHttp.Request(HttpMethod.Delete, "installation/token", token);
             using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
+            // 401: GitHub no longer accepts the token, which is what revoking was for.
+            if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.Unauthorized)
             {
                 LogRevokeFailed(logger, (int)response.StatusCode);
             }
@@ -255,9 +258,14 @@ internal sealed partial class GitHubAppCredentials(
     /// <summary>Why the token must be scoped again now, or null to keep it.</summary>
     private string? RenewalReason(string configured, DateTimeOffset now)
     {
-        if (_token is null || _invalidated)
+        if (_token is null)
         {
             return "first token";
+        }
+
+        if (_invalidated)
+        {
+            return "GitHub refused a request";
         }
 
         if (_expiresAt - now <= RenewBefore)

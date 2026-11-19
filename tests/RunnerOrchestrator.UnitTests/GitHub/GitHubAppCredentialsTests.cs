@@ -17,6 +17,7 @@ public sealed class GitHubAppCredentialsTests : IDisposable
     private readonly FakeHttpHandler _handler = new();
     private readonly ListLogger<GitHubAppCredentials> _logger = new();
     private MutableOptionsMonitor<RepositoryListOptions>? _repositories;
+    private HttpStatusCode _revokeStatus = HttpStatusCode.NoContent;
     private string _installed = """{"repositories":[{"full_name":"thiagoluga/runner-pool-sandbox","private":true,"owner":{"login":"thiagoluga"}},{"full_name":"thiagoluga/other","private":true,"owner":{"login":"thiagoluga"}}]}""";
 
     [Fact]
@@ -46,7 +47,7 @@ public sealed class GitHubAppCredentialsTests : IDisposable
                 HttpStatusCode.Created,
                 $$"""{"token":"{{(IsScoped(request) ? Token : MetadataToken)}}","expires_at":"{{_time.GetUtcNow().AddHours(1):O}}"}"""))
             .On(HttpMethod.Get, "/installation/repositories", _ => FakeHttpHandler.Json(HttpStatusCode.OK, _installed))
-            .On(HttpMethod.Delete, "/installation/token", HttpStatusCode.NoContent);
+            .On(HttpMethod.Delete, "/installation/token", _ => FakeHttpHandler.Json(_revokeStatus, string.Empty));
     }
 
     [Fact]
@@ -137,6 +138,44 @@ public sealed class GitHubAppCredentialsTests : IDisposable
 
         _handler.Requests.Where(r => r.Method == HttpMethod.Delete).Select(r => r.Authorization)
             .Should().Equal($"Bearer {MetadataToken}", $"Bearer {MetadataToken}", $"Bearer {Token}");
+    }
+
+    [Fact]
+    public async Task GetInstallationToken_ReplacedTokenAlreadyExpired_IsNotRevoked()
+    {
+        using var credentials = Create();
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+
+        _time.Advance(TimeSpan.FromHours(6));
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+
+        _handler.Requests.Where(r => r.Method == HttpMethod.Delete).Select(r => r.Authorization)
+            .Should().Equal($"Bearer {MetadataToken}", $"Bearer {MetadataToken}");
+    }
+
+    [Fact]
+    public async Task GetInstallationToken_RevokeAnswers401_LogsNoWarning()
+    {
+        _revokeStatus = HttpStatusCode.Unauthorized;
+        using var credentials = Create();
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+        credentials.Invalidate();
+
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+
+        _logger.AllText.Should().NotContain("Revoking a replaced installation token failed");
+        _logger.AllText.Should().Contain("(GitHub refused a request)");
+    }
+
+    [Fact]
+    public async Task GetInstallationToken_RevokeAnswers500_LogsWarning()
+    {
+        _revokeStatus = HttpStatusCode.InternalServerError;
+        using var credentials = Create();
+
+        await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+
+        _logger.AllText.Should().Contain("Revoking a replaced installation token failed (status 500)");
     }
 
     [Fact]
