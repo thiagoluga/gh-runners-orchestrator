@@ -364,3 +364,19 @@ isolated. Each leg alone, and saas-foundry at `MaxConcurrent: 1`, run green.
 The rule is in [operations.md](operations.md#enable-or-disable-a-repository): never two
 Aspire applications at once on one host. Today only saas-foundry starts Aspire AppHosts;
 insurapp does not.
+
+## Status endpoint deployed - 2026-11-19
+
+[#22](https://github.com/thiagoluga/gh-runners-orchestrator/issues/22) /
+[#45](https://github.com/thiagoluga/gh-runners-orchestrator/pull/45), revision `736ed64`,
+image digest `sha256:9c82290e7f6845bd11ea1603f8bec37f93fc95dabdda622588cb29708b5bf174`, on
+gh-runner-2 at 13:55 UTC. The host's `compose.yaml` gained the loopback port mapping and
+`Orchestrator__StatusPort`; the previous file is `compose.yaml.before-736ed64`.
+
+- The log showed `Status endpoint listening on port 9464`; both installations renewed their
+  tokens and cycles ran normally.
+- `curl http://127.0.0.1:9464/healthz` answered `ok` (200); `/metrics` listed every
+  repository and both accounts' budgets. The same port on the host's LAN address refused
+  the connection.
+- Sandbox smoke run 44538472789 passed; afterwards `ghro_runners_launched_total 1`,
+  `ghro_runners_finished_total 1`, `ghro_launch_failures_total 0`.
