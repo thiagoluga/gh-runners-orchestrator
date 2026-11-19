@@ -332,8 +332,11 @@ was restarted. At 08:03 both installations took a new token, the first cycles se
 backlog (a sandbox job and five saas-foundry jobs queued during the outage) and no runner
 or container was left behind. Each renewal also warned that revoking the replaced token
 failed with 401: those tokens had expired during the outage. Fixed in
-[#43](https://github.com/thiagoluga/gh-runners-orchestrator/pull/43), merged, not yet
-deployed (deployment is a maintainer approval, [multiple-apps.md](multiple-apps.md)).
+[#43](https://github.com/thiagoluga/gh-runners-orchestrator/pull/43). Deployed on
+2026-11-19 at 09:28 UTC after Thiago's approval: Compose pins
+`sha256:60ac89315a8d11eab3f1743aef457f8c8ef1127d7191631416acd3ab2aed9357` (revision
+`2e28e5c`), backup `compose.yaml.before-2e28e5c` for rollback. Both installations renewed,
+no revoke warning, and a sandbox smoke (run 44496916274) passed with no container left.
 
 ## Two Aspire applications in two slots - 2026-11-19
 
