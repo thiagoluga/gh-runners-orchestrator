@@ -520,7 +520,7 @@ public sealed class InstallationRouterTests : IDisposable
         return new PoolCycle(new PoolBoundaries(runtime, api, _time), new DemandPoller(api, options),
             new RepositoryGuard(api, options, new ListLogger<RepositoryGuard>()),
             new RunnerLauncher(api, runtime, options, _time, new ListLogger<RunnerLauncher>()),
-            options, _repositories, new ListLogger<PoolCycle>());
+            options, _repositories, new PoolStatus(), new ListLogger<PoolCycle>());
     }
 
     private void AddAccount(string owner, long id)

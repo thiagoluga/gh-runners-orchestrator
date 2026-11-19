@@ -20,6 +20,7 @@ internal sealed partial class PoolCycle(
     RunnerLauncher launcher,
     IOptions<OrchestratorOptions> options,
     IOptionsMonitor<RepositoryListOptions> repositories,
+    PoolStatus status,
     ILogger<PoolCycle> logger)
 {
     /// <summary>
@@ -36,8 +37,10 @@ internal sealed partial class PoolCycle(
         var (live, finishedRemoved) = await ReadContainersAsync(containers, cancellationToken).ConfigureAwait(false);
 
         var rateLimit = boundaries.Api.RateLimit;
+        status.RateLimited(rateLimit is { IsLow: true });
         if (rateLimit is { IsLow: true })
         {
+            status.SlotsObserved(options.Value.Slots.Count, OccupiedSlots(containers, finishedRemoved));
             LogBackingOff(logger, rateLimit.Remaining, rateLimit.Limit, rateLimit.ResetsAt);
             return;
         }
@@ -71,8 +74,11 @@ internal sealed partial class PoolCycle(
 
         var slots = settings.Slots;
         var pool = BuildPool(containers, live, removed, finishedRemoved);
+        status.Blocked(pool is null);
         if (pool is null)
         {
+            status.PoolObserved(slots.Count, OccupiedSlots(containers, finishedRemoved, removed), 0, demands, ReadBudgets(watched)
+                .ToDictionary(b => b.Owner, b => b.Budget?.Remaining, StringComparer.OrdinalIgnoreCase));
             return;
         }
 
@@ -88,23 +94,34 @@ internal sealed partial class PoolCycle(
             }
             catch (Exception exception) when (IsTransient(exception, cancellationToken))
             {
+                status.LaunchFailed();
                 LogLaunchFailed(logger, decision.Repository, exception.Message);
             }
         }
 
+        var budgets = ReadBudgets(watched);
+        status.PoolObserved(slots.Count, pool.Count + launched, launched, demands,
+            budgets.ToDictionary(b => b.Owner, b => b.Budget?.Remaining, StringComparer.OrdinalIgnoreCase));
         if (!logger.IsEnabled(LogLevel.Information))
         {
             return;
         }
 
         var demand = string.Join(", ", demands.Select(d => string.Create(CultureInfo.InvariantCulture, $"{d.Repository}={d.QueuedJobs}q/{d.WaitingRunners}w")));
-        var budgets = string.Join(", ", watched.GroupBy(r => r.Owner, StringComparer.OrdinalIgnoreCase).Select(group =>
-        {
-            var budget = boundaries.Api.GetRateLimit(group.First());
-            return string.Create(CultureInfo.InvariantCulture, $"{group.Key}={budget?.Remaining}/{budget?.Limit}");
-        }));
-        LogSummary(logger, slots.Count, pool.Count + launched, demand, budgets);
+        var budgetText = string.Join(", ", budgets.Select(b => string.Create(CultureInfo.InvariantCulture, $"{b.Owner}={b.Budget?.Remaining}/{b.Budget?.Limit}")));
+        LogSummary(logger, slots.Count, pool.Count + launched, demand, budgetText);
     }
+
+    private List<(string Owner, RateLimitStatus? Budget)> ReadBudgets(List<RepositoryName> watched) =>
+        [.. watched.GroupBy(r => r.Owner, StringComparer.OrdinalIgnoreCase)
+            .Select(group => (Owner: group.Key, Budget: boundaries.Api.GetRateLimit(group.First())))];
+
+    /// <summary>Distinct slots still held by a container this cycle did not remove.</summary>
+    private static int OccupiedSlots(IReadOnlyList<ContainerSummary> containers, params IEnumerable<HashSet<string>> gone) =>
+        containers.Where(c => !gone.Any(g => g.Contains(c.Id)))
+            .Select(c => c.Labels.TryGetValue(ManagedLabels.Slot, out var slot) ? slot.ToUpperInvariant() : c.Id)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
 
     private async Task<(List<ManagedRunner> Live, HashSet<string> Removed)> ReadContainersAsync(
         IReadOnlyList<ContainerSummary> containers, CancellationToken cancellationToken)
@@ -265,6 +282,7 @@ internal sealed partial class PoolCycle(
             var state = await boundaries.Runtime.InspectAsync(container.Id, cancellationToken).ConfigureAwait(false);
             var duration = state.StartedAt is { } started && state.FinishedAt is { } finished ? finished - started : (TimeSpan?)null;
             await boundaries.Runtime.RemoveAsync(container.Id, cancellationToken).ConfigureAwait(false);
+            status.RunnerFinished();
             LogFinished(logger, container.Name, repositoryLabel ?? "?", state.ExitCode, duration);
             if (ToManagedRunner(container) is { RunnerId: { } runnerId } managed)
             {

@@ -30,6 +30,24 @@ public sealed class OrchestratorOptionsValidatorTests
             .And.Contain(f => f.Contains("Slots", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(0, "", true)]
+    [InlineData(9464, "+", true)]
+    [InlineData(9464, "127.0.0.1", true)]
+    [InlineData(-1, "+", false)]
+    [InlineData(65536, "+", false)]
+    [InlineData(9464, "", false)]
+    [InlineData(9464, "evil.example/path", false)]
+    [InlineData(9464, "user@host", false)]
+    public void Validate_StatusEndpoint(int port, string host, bool valid)
+    {
+        var options = TestOptions.Orchestrator();
+        options.StatusPort = port;
+        options.StatusHost = host;
+
+        _validator.Validate(null, options).Succeeded.Should().Be(valid);
+    }
+
     [Fact]
     public void Validate_DuplicateSlotOrBadMemory_Fails()
     {

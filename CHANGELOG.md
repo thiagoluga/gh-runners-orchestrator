@@ -12,6 +12,10 @@ versions follow [Semantic Versioning](https://semver.org/) from the first releas
 
 ### Added
 
+- Optional status endpoint: `/healthz` and Prometheus `/metrics` with cycle, slot,
+  demand, launch and rate-budget counters, published on the host's loopback by the
+  reference deployment ([#22](https://github.com/thiagoluga/gh-runners-orchestrator/issues/22)).
+
 - Configurable GitHub App registry with explicit per-account App bindings and independent
   keys, preserving single-App configurations and global capacity. Includes private-App
   deployment examples and safe handling of local key failures.

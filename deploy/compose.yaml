@@ -10,6 +10,10 @@ services:
     # The orchestrator talks to the host Docker Engine; it runs as uid 1654 and needs the
     # socket's group (stat -c %g /var/run/docker.sock).
     group_add: ["${DOCKER_GID:?Set DOCKER_GID in .env}"]
+    # Status endpoint (/healthz, /metrics), published on the host's loopback only
+    # (docs/operations.md#health-and-metrics).
+    ports:
+      - "127.0.0.1:${STATUS_PORT:-9464}:9464"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./config:/app/config:ro
@@ -20,6 +24,7 @@ services:
       DOTNET_USE_POLLING_FILE_WATCHER: "true"
       Orchestrator__DockerSocketGroupId: ${DOCKER_GID}
       Orchestrator__GitHubApp__PrivateKeyPath: /run/secrets/github-app.pem
+      Orchestrator__StatusPort: "9464"
     secrets:
       - github-app.pem
     logging:

@@ -90,6 +90,25 @@ outside the token, the orchestrator scopes a new one at that interval (log reaso
 
 No log line ever contains a token, the key or a JIT configuration.
 
+## Health and metrics
+
+The reference deployment serves two read-only pages on the host's loopback
+(`127.0.0.1:9464`, `STATUS_PORT` in `.env`; `Orchestrator:StatusPort` 0 turns it off):
+
+- `GET /healthz`: `200 ok` while cycles complete; `503` before the first cycle or when no
+  cycle completed in the last three poll intervals plus a minute. A watchdog can restart
+  the orchestrator on 503: `curl -fsS http://127.0.0.1:9464/healthz || docker compose restart`.
+- `GET /metrics`: Prometheus text format. `ghro_healthy`, `ghro_cycles_total`,
+  `ghro_cycle_failures_total`, `ghro_last_successful_cycle_timestamp_seconds`,
+  `ghro_slots`, `ghro_slots_busy`, `ghro_runners_launched_total`,
+  `ghro_runners_finished_total`, `ghro_launch_failures_total`, `ghro_rate_limited`,
+  `ghro_blocked` (a managed container without a configured slot stops launches), and per
+  repository or account `ghro_queued_jobs`, `ghro_waiting_runners`,
+  `ghro_rate_limit_remaining`. Counters restart at zero with the orchestrator.
+
+The pages hold counters and repository names, never a token or a runner configuration.
+Keep the port off public interfaces: repository names are private.
+
 ## Update
 
 - **Orchestrator**: set `ORCHESTRATOR_TAG`, then `docker compose pull && docker compose up -d`.

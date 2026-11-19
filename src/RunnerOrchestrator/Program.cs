@@ -41,8 +41,10 @@ builder.Services.AddSingleton<PoolBoundaries>();
 builder.Services.AddSingleton<DemandPoller>();
 builder.Services.AddSingleton<RepositoryGuard>();
 builder.Services.AddSingleton<RunnerLauncher>();
+builder.Services.AddSingleton<PoolStatus>();
 builder.Services.AddSingleton<PoolCycle>();
 builder.Services.AddHostedService<OrchestratorWorker>();
 builder.Services.AddHostedService<RunnerVersionWatch>();
+builder.Services.AddHostedService<StatusEndpoint>();
 
 await builder.Build().RunAsync().ConfigureAwait(false);
