@@ -105,6 +105,8 @@ public sealed class StatusEndpointTests
         await endpoint.StartAsync(cancellation);
         try
         {
+            // ExecuteAsync runs on its own task; wait until the listener is up.
+            (await endpoint.Listening.WaitAsync(TimeSpan.FromSeconds(10), cancellation)).Should().BeTrue();
             using var client = new HttpClient { BaseAddress = new Uri(OperatingSystem.IsWindows() ? $"http://localhost:{port}/" : $"http://127.0.0.1:{port}/") };
             using var health = await client.GetAsync(new Uri("healthz", UriKind.Relative), cancellation);
             var metrics = await client.GetStringAsync(new Uri("metrics", UriKind.Relative), cancellation);
@@ -126,6 +128,7 @@ public sealed class StatusEndpointTests
         using var endpoint = new StatusEndpoint(new PoolStatus(), TestOptions.Wrap(TestOptions.Orchestrator()), TimeProvider.System, logger);
 
         await endpoint.StartAsync(TestContext.Current.CancellationToken);
+        (await endpoint.Listening.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken)).Should().BeFalse();
         await endpoint.StopAsync(TestContext.Current.CancellationToken);
 
         logger.AllText.Should().BeEmpty();

@@ -26,11 +26,17 @@ internal sealed partial class StatusEndpoint(
     private const string Gauge = "gauge";
     private const string Counter = "counter";
 
+    private readonly TaskCompletionSource<bool> _listening = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Completes with true once the endpoint listens, false when it is off or could not listen.</summary>
+    public Task<bool> Listening => _listening.Task;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var settings = options.Value;
         if (settings.StatusPort == 0)
         {
+            _listening.TrySetResult(false);
             return;
         }
 
@@ -44,10 +50,12 @@ internal sealed partial class StatusEndpoint(
         catch (Exception exception) when (exception is HttpListenerException or ArgumentException)
         {
             LogListenFailed(logger, settings.StatusPort, exception.Message);
+            _listening.TrySetResult(false);
             return;
         }
 
         LogListening(logger, settings.StatusPort);
+        _listening.TrySetResult(true);
         using var registration = stoppingToken.Register(listener.Stop);
         while (!stoppingToken.IsCancellationRequested)
         {
