@@ -20,9 +20,10 @@ internal sealed partial class PoolCycle(
     RunnerLauncher launcher,
     IOptions<OrchestratorOptions> options,
     IOptionsMonitor<RepositoryListOptions> repositories,
-    PoolStatus status,
     ILogger<PoolCycle> logger)
 {
+    private readonly PoolStatus status = boundaries.Status;
+
     /// <summary>
     /// A launch creates and starts within seconds; a container still only created after this
     /// never started. Also the grace before a container whose runner is missing becomes a suspect.

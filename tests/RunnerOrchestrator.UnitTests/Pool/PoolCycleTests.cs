@@ -304,13 +304,12 @@ public sealed class PoolCycleTests
         var options = TestOptions.Wrap(TestOptions.Orchestrator());
         var time = _time;
         return new PoolCycle(
-            new PoolBoundaries(_runtime, _api, time),
+            new PoolBoundaries(_runtime, _api, time, Status),
             new DemandPoller(_api, options),
             new RepositoryGuard(_api, options, new ListLogger<RepositoryGuard>()),
             new RunnerLauncher(_api, _runtime, options, time, new ListLogger<RunnerLauncher>()),
             options,
             _repositories,
-            Status,
             _logger);
     }
 }

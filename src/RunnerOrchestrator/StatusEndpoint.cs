@@ -22,6 +22,10 @@ internal sealed partial class StatusEndpoint(
     TimeProvider time,
     ILogger<StatusEndpoint> logger) : BackgroundService
 {
+    private const string PlainText = "text/plain; charset=utf-8";
+    private const string Gauge = "gauge";
+    private const string Counter = "counter";
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var settings = options.Value;
@@ -33,7 +37,8 @@ internal sealed partial class StatusEndpoint(
         using var listener = new HttpListener();
         try
         {
-            listener.Prefixes.Add(string.Create(CultureInfo.InvariantCulture, $"http://{settings.StatusHost}:{settings.StatusPort}/"));
+            // Plain HTTP on purpose: read-only counters, published on the host's loopback only.
+            listener.Prefixes.Add(string.Create(CultureInfo.InvariantCulture, $"http://{settings.StatusHost}:{settings.StatusPort}/")); // NOSONAR S5332
             listener.Start();
         }
         catch (Exception exception) when (exception is HttpListenerException or ArgumentException)
@@ -109,51 +114,60 @@ internal sealed partial class StatusEndpoint(
     {
         if (method is not ("GET" or "HEAD"))
         {
-            return (405, "text/plain; charset=utf-8", "method not allowed\n");
+            return (405, PlainText, "method not allowed\n");
         }
 
         return path switch
         {
-            "/healthz" => IsHealthy(snapshot, now, pollInterval)
-                ? (200, "text/plain; charset=utf-8", "ok\n")
-                : (503, "text/plain; charset=utf-8", snapshot.LastSuccessfulCycleAt is null ? "no cycle completed yet\n" : "no cycle completed recently\n"),
+            "/healthz" => Health(snapshot, now, pollInterval),
             "/metrics" => (200, "text/plain; version=0.0.4; charset=utf-8", RenderMetrics(snapshot, now, pollInterval)),
-            _ => (404, "text/plain; charset=utf-8", "not found\n"),
+            _ => (404, PlainText, "not found\n"),
         };
+    }
+
+    private static (int Code, string ContentType, string Body) Health(PoolStatusSnapshot snapshot, DateTimeOffset now, TimeSpan pollInterval)
+    {
+        if (IsHealthy(snapshot, now, pollInterval))
+        {
+            return (200, PlainText, "ok\n");
+        }
+
+        var reason = snapshot.LastSuccessfulCycleAt is null ? "no cycle completed yet\n" : "no cycle completed recently\n";
+        return (503, PlainText, reason);
     }
 
     public static string RenderMetrics(PoolStatusSnapshot snapshot, DateTimeOffset now, TimeSpan pollInterval)
     {
         var text = new StringBuilder();
-        Metric(text, "ghro_healthy", "gauge", "1 while cycles complete on schedule.", IsHealthy(snapshot, now, pollInterval) ? 1 : 0);
-        Metric(text, "ghro_cycles_total", "counter", "Cycles run since start.", snapshot.Cycles);
-        Metric(text, "ghro_cycle_failures_total", "counter", "Cycles that ended with an error.", snapshot.CycleFailures);
+        Metric(text, "ghro_healthy", Gauge, "1 while cycles complete on schedule.", IsHealthy(snapshot, now, pollInterval) ? 1 : 0);
+        Metric(text, "ghro_cycles_total", Counter, "Cycles run since start.", snapshot.Cycles);
+        Metric(text, "ghro_cycle_failures_total", Counter, "Cycles that ended with an error.", snapshot.CycleFailures);
         if (snapshot.LastSuccessfulCycleAt is { } last)
         {
-            Metric(text, "ghro_last_successful_cycle_timestamp_seconds", "gauge", "Unix time of the last cycle that completed.", last.ToUnixTimeSeconds());
+            Metric(text, "ghro_last_successful_cycle_timestamp_seconds", Gauge, "Unix time of the last cycle that completed.", last.ToUnixTimeSeconds());
         }
 
-        Metric(text, "ghro_rate_limited", "gauge", "1 while demand is skipped for a low GitHub API budget.", snapshot.RateLimited ? 1 : 0);
-        Metric(text, "ghro_blocked", "gauge", "1 while a managed container without a configured slot stops launches.", snapshot.Blocked ? 1 : 0);
-        Metric(text, "ghro_slots", "gauge", "Configured slots.", snapshot.Slots);
-        Metric(text, "ghro_slots_busy", "gauge", "Slots holding a runner container.", snapshot.BusySlots);
-        Metric(text, "ghro_runners_launched_total", "counter", "Runner containers started since start.", snapshot.RunnersLaunched);
-        Metric(text, "ghro_runners_finished_total", "counter", "Finished runner containers removed since start.", snapshot.RunnersFinished);
-        Metric(text, "ghro_launch_failures_total", "counter", "Launches that failed since start.", snapshot.LaunchFailures);
+        Metric(text, "ghro_rate_limited", Gauge, "1 while demand is skipped for a low GitHub API budget.", snapshot.RateLimited ? 1 : 0);
+        Metric(text, "ghro_blocked", Gauge, "1 while a managed container without a configured slot stops launches.", snapshot.Blocked ? 1 : 0);
+        Metric(text, "ghro_slots", Gauge, "Configured slots.", snapshot.Slots);
+        Metric(text, "ghro_slots_busy", Gauge, "Slots holding a runner container.", snapshot.BusySlots);
+        Metric(text, "ghro_runners_launched_total", Counter, "Runner containers started since start.", snapshot.RunnersLaunched);
+        Metric(text, "ghro_runners_finished_total", Counter, "Finished runner containers removed since start.", snapshot.RunnersFinished);
+        Metric(text, "ghro_launch_failures_total", Counter, "Launches that failed since start.", snapshot.LaunchFailures);
 
-        Header(text, "ghro_queued_jobs", "gauge", "Queued jobs the pool serves, per repository.");
+        Header(text, "ghro_queued_jobs", Gauge, "Queued jobs the pool serves, per repository.");
         foreach (var demand in snapshot.Demand)
         {
             Sample(text, "ghro_queued_jobs", "repository", demand.Repository.ToString(), demand.QueuedJobs);
         }
 
-        Header(text, "ghro_waiting_runners", "gauge", "Runners started but not busy yet, per repository.");
+        Header(text, "ghro_waiting_runners", Gauge, "Runners started but not busy yet, per repository.");
         foreach (var demand in snapshot.Demand)
         {
             Sample(text, "ghro_waiting_runners", "repository", demand.Repository.ToString(), demand.WaitingRunners);
         }
 
-        Header(text, "ghro_rate_limit_remaining", "gauge", "Remaining GitHub API requests, per account.");
+        Header(text, "ghro_rate_limit_remaining", Gauge, "Remaining GitHub API requests, per account.");
         foreach (var (owner, remaining) in snapshot.RateRemaining.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase))
         {
             if (remaining is { } value)
