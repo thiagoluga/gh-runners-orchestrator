@@ -13,6 +13,8 @@ public sealed class PoolCycleTests
     private readonly IGitHubRunnerApi _api = Substitute.For<IGitHubRunnerApi>();
     private readonly IContainerRuntime _runtime = Substitute.For<IContainerRuntime>();
     private readonly ListLogger<PoolCycle> _logger = new();
+
+    private PoolStatus Status { get; } = new();
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 15, 12, 0, 0, TimeSpan.Zero));
     private readonly MutableOptionsMonitor<RepositoryListOptions> _repositories = TestOptions.Monitor(TestOptions.Repositories("thiagoluga/runner-pool-sandbox"));
 
@@ -76,6 +78,11 @@ public sealed class PoolCycleTests
 
         await _runtime.Received(2).CreateAsync(Arg.Any<ContainerSpec>(), Arg.Any<CancellationToken>());
         _logger.AllText.Should().Contain("2/2 slots taken").And.Contain("thiagoluga/runner-pool-sandbox=3q/0w");
+        var status = Status.Snapshot();
+        status.Slots.Should().Be(2);
+        status.BusySlots.Should().Be(2);
+        status.RunnersLaunched.Should().Be(2);
+        status.Demand.Should().ContainSingle().Which.QueuedJobs.Should().Be(3);
     }
 
     [Fact]
@@ -114,6 +121,10 @@ public sealed class PoolCycleTests
         await _runtime.Received(1).RemoveAsync("c1", Arg.Any<CancellationToken>());
         await _api.DidNotReceiveWithAnyArgs().ListRunIdsAsync(default, default!, TestContext.Current.CancellationToken);
         _logger.AllText.Should().Contain("Rate limit low");
+        Status.Snapshot().RateLimited.Should().BeTrue();
+        Status.Snapshot().RunnersFinished.Should().Be(1);
+        Status.Snapshot().BusySlots.Should().Be(0);
+        Status.Snapshot().Slots.Should().Be(2);
     }
 
     [Fact]
@@ -125,6 +136,8 @@ public sealed class PoolCycleTests
         var act = () => Create().RunOnceAsync(TestContext.Current.CancellationToken);
 
         await act.Should().NotThrowAsync();
+        Status.Snapshot().LaunchFailures.Should().Be(1);
+        Status.Snapshot().RunnersLaunched.Should().Be(0);
     }
 
     [Fact]
@@ -253,6 +266,9 @@ public sealed class PoolCycleTests
         await Create().RunOnceAsync(TestContext.Current.CancellationToken);
         await _runtime.DidNotReceiveWithAnyArgs().CreateAsync(default!, TestContext.Current.CancellationToken);
         _logger.AllText.Should().Contain("no configured slot");
+        Status.Snapshot().Blocked.Should().BeTrue();
+        Status.Snapshot().BusySlots.Should().Be(1);
+        Status.Snapshot().Demand.Should().ContainSingle().Which.QueuedJobs.Should().Be(2);
     }
 
     [Fact]
@@ -288,7 +304,7 @@ public sealed class PoolCycleTests
         var options = TestOptions.Wrap(TestOptions.Orchestrator());
         var time = _time;
         return new PoolCycle(
-            new PoolBoundaries(_runtime, _api, time),
+            new PoolBoundaries(_runtime, _api, time, Status),
             new DemandPoller(_api, options),
             new RepositoryGuard(_api, options, new ListLogger<RepositoryGuard>()),
             new RunnerLauncher(_api, _runtime, options, time, new ListLogger<RunnerLauncher>()),

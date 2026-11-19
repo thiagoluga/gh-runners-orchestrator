@@ -517,7 +517,7 @@ public sealed class InstallationRouterTests : IDisposable
     private PoolCycle Cycle(IGitHubRunnerApi api, IContainerRuntime runtime)
     {
         var options = TestOptions.Wrap(_options);
-        return new PoolCycle(new PoolBoundaries(runtime, api, _time), new DemandPoller(api, options),
+        return new PoolCycle(new PoolBoundaries(runtime, api, _time, new PoolStatus()), new DemandPoller(api, options),
             new RepositoryGuard(api, options, new ListLogger<RepositoryGuard>()),
             new RunnerLauncher(api, runtime, options, _time, new ListLogger<RunnerLauncher>()),
             options, _repositories, new ListLogger<PoolCycle>());

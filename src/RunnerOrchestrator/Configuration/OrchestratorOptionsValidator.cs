@@ -38,6 +38,16 @@ internal sealed class OrchestratorOptionsValidator : IValidateOptions<Orchestrat
 
         ValidateApps(options, errors);
 
+        if (options.StatusPort is < 0 or > 65535)
+        {
+            errors.Add("Orchestrator:StatusPort must be 0 (off) or a TCP port.");
+        }
+
+        if (options.StatusPort != 0 && (string.IsNullOrWhiteSpace(options.StatusHost) || options.StatusHost.Any(c => char.IsWhiteSpace(c) || c is '/' or '?' or '#' or '@')))
+        {
+            errors.Add("Orchestrator:StatusHost must be a host name, an address, + or *.");
+        }
+
         ValidateSlots(options.Slots, errors);
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
     }

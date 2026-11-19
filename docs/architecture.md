@@ -72,7 +72,8 @@ One cycle, every `PollInterval`:
     "Slots": [
       { "Name": "slot-1", "Cpuset": "0-4", "Memory": "16g" },
       { "Name": "slot-2", "Cpuset": "5-9", "Memory": "16g" }
-    ]
+    ],
+    "StatusPort": 0              // 0 = off; the reference deployment sets 9464 (operations.md)
   }
 }
 ```

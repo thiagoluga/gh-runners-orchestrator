@@ -9,6 +9,7 @@ namespace RunnerOrchestrator;
 /// <summary>Runs <see cref="PoolCycle"/> every poll interval. A failed cycle is logged and the next one runs.</summary>
 internal sealed partial class OrchestratorWorker(
     PoolCycle cycle,
+    PoolStatus status,
     IOptions<OrchestratorOptions> options,
     TimeProvider time,
     ILogger<OrchestratorWorker> logger) : BackgroundService
@@ -23,9 +24,11 @@ internal sealed partial class OrchestratorWorker(
             try
             {
                 await cycle.RunOnceAsync(stoppingToken).ConfigureAwait(false);
+                status.CycleSucceeded(time.GetUtcNow());
             }
             catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
+                status.CycleFailed(time.GetUtcNow());
                 LogCycleFailed(logger, exception);
             }
         }

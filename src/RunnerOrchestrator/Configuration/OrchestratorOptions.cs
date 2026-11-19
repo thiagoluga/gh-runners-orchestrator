@@ -51,4 +51,13 @@ public sealed class OrchestratorOptions
         .Single(account => string.Equals(account.Owner, owner, StringComparison.OrdinalIgnoreCase)));
 
     public IList<SlotOptions> Slots { get; } = [];
+
+    /// <summary>Port of the status endpoint (<c>/healthz</c>, <c>/metrics</c>); 0 turns it off.</summary>
+    public int StatusPort { get; set; }
+
+    /// <summary>
+    /// Host part of the status endpoint's listen prefix. <c>+</c> listens on every interface of the
+    /// orchestrator container; the deployment decides what reaches it (loopback only by default).
+    /// </summary>
+    public string StatusHost { get; set; } = "+";
 }
