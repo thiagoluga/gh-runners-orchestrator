@@ -93,7 +93,9 @@ public sealed class StatusEndpointTests
         var port = FreePort();
         var options = TestOptions.Orchestrator();
         options.StatusPort = port;
-        options.StatusHost = "localhost";
+        // Linux runs the production prefix and connects over IPv4, as docker-proxy does; Windows
+        // (http.sys) only lets a non-administrator listen on localhost.
+        options.StatusHost = OperatingSystem.IsWindows() ? "localhost" : "+";
         var status = new PoolStatus();
         status.CycleSucceeded(DateTimeOffset.UtcNow);
         var logger = new ListLogger<StatusEndpoint>();
@@ -103,7 +105,7 @@ public sealed class StatusEndpointTests
         await endpoint.StartAsync(cancellation);
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri($"http://localhost:{port}/") };
+            using var client = new HttpClient { BaseAddress = new Uri(OperatingSystem.IsWindows() ? $"http://localhost:{port}/" : $"http://127.0.0.1:{port}/") };
             using var health = await client.GetAsync(new Uri("healthz", UriKind.Relative), cancellation);
             var metrics = await client.GetStringAsync(new Uri("metrics", UriKind.Relative), cancellation);
 
