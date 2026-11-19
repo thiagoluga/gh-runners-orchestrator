@@ -334,3 +334,30 @@ or container was left behind. Each renewal also warned that revoking the replace
 failed with 401: those tokens had expired during the outage. Fixed in
 [#43](https://github.com/thiagoluga/gh-runners-orchestrator/pull/43), merged, not yet
 deployed (deployment is a maintainer approval, [multiple-apps.md](multiple-apps.md)).
+
+## Two Aspire applications in two slots - 2026-11-19
+
+[#35](https://github.com/thiagoluga/gh-runners-orchestrator/issues/35). The
+`aspire-isolation` workflow of `thiagoluga/runner-pool-sandbox` runs one minimal Aspire
+13.6.5 AppHost (one PostgreSQL container, as saas-foundry) in each slot at once and checks
+every 5 s that its own container is still running, with DCP debug logs kept as artifacts.
+
+| Run | Result |
+|---|---|
+| 44487348063 | leg 2's container never appeared in 2 minutes; leg 1 ran its full 180 s |
+| 44488048224 | leg 1's container was killed and destroyed 5 s after it started; leg 2 ran its full time |
+| 44488565004 | leg 2's container was destroyed 6 s after it started; leg 1 ran its full time |
+| 44489094609 | leg 1 lost again; leg 2 ran its full time |
+
+In every run exactly one application lost its containers, and it was the one started
+first, a few seconds after the other started. Its own DCP did it: the API server logged
+`API server changed status Running -> Stopping` from its admin HTTP handler, then
+`BeforeApiSrvShutdown ... ResourceCleanup: Full`, and deleted the session's containers and
+network, while its AppHost had not asked to stop (no shutdown line in the AppHost log). The
+two runner containers share only the host network namespace and the Docker daemon, so the
+stop request or its trigger crosses between them through one of those; which one was not
+isolated. Each leg alone, and saas-foundry at `MaxConcurrent: 1`, run green.
+
+The rule is in [operations.md](operations.md#enable-or-disable-a-repository): never two
+Aspire applications at once on one host. Today only saas-foundry starts Aspire AppHosts;
+insurapp does not.

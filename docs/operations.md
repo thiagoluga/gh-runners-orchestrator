@@ -61,9 +61,13 @@ change to run the new binary. Repository-list edits still reload without restart
    installation.
 
 Slots share the host network and Docker daemon. Give `MaxConcurrent: 1` to a repository
-whose tests assume a host of their own, for example those that start the same Aspire
-application in parallel jobs. saas-foundry runs this way
-([#35](https://github.com/thiagoluga/gh-runners-orchestrator/issues/35)).
+whose tests assume a host of their own. **Two .NET Aspire applications must never run at
+the same time on one host**, whatever their repository: the orchestrator (DCP) of the one
+started first stops and deletes its containers a few seconds after the second starts
+([#35](https://github.com/thiagoluga/gh-runners-orchestrator/issues/35), measured with the
+`aspire-isolation` probe of runner-pool-sandbox). saas-foundry, the only Aspire repository
+on the pool, runs at `MaxConcurrent: 1`. Before enabling a second repository whose jobs
+start Aspire AppHosts, the pool needs a way to keep such jobs exclusive (not built yet).
 
 A listed repository that is public, owned by an unauthorized account or not covered by the installation
 is refused with a `Repository … refused: …` warning. When the App is installed on a repository
