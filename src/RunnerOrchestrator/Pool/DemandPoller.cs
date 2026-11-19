@@ -5,9 +5,8 @@ using RunnerOrchestrator.GitHub;
 namespace RunnerOrchestrator.Pool;
 
 /// <summary>
-/// Reads the queued jobs the pool can serve in one repository (ADR 0001). Both queued and
-/// in-progress runs are read: a run with one job running is in progress while its later jobs
-/// still wait.
+/// Reads served queued jobs in queued, pending and in-progress runs (ADR 0001). A run can
+/// be pending on job concurrency while another job is already queued for a runner.
 /// </summary>
 internal sealed class DemandPoller(IGitHubRunnerApi api, IOptions<OrchestratorOptions> options)
 {
@@ -17,9 +16,10 @@ internal sealed class DemandPoller(IGitHubRunnerApi api, IOptions<OrchestratorOp
     {
         var queuedRuns = await api.ListRunIdsAsync(repository, "queued", cancellationToken).ConfigureAwait(false);
         var activeRuns = await api.ListRunIdsAsync(repository, "in_progress", cancellationToken).ConfigureAwait(false);
+        var pendingRuns = await api.ListRunIdsAsync(repository, "pending", cancellationToken).ConfigureAwait(false);
         var count = 0;
         DateTimeOffset? oldest = null;
-        foreach (var runId in queuedRuns.Concat(activeRuns).Distinct())
+        foreach (var runId in queuedRuns.Concat(activeRuns).Concat(pendingRuns).Distinct())
         {
             var jobs = await api.ListJobsAsync(repository, runId, cancellationToken).ConfigureAwait(false);
             foreach (var job in jobs.Where(job => job.Status == "queued" && ServedLabels.Serves(_served, job.Labels)))

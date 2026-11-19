@@ -6,7 +6,7 @@ using RunnerOrchestrator.GitHub;
 namespace RunnerOrchestrator.Pool;
 
 /// <summary>
-/// ADR 0006: only private repositories of the configured owner get runners. Checked against the
+/// ADR 0011: only private repositories of explicitly trusted accounts get runners. Checked against the
 /// API on every cycle (a conditional request, so almost always free), never trusted from the
 /// configuration alone.
 /// </summary>
@@ -19,13 +19,18 @@ internal sealed partial class RepositoryGuard(
 
     public async Task<IReadOnlyList<EnabledRepository>> FilterAsync(IEnumerable<RepositoryOptions> configured, CancellationToken cancellationToken)
     {
+        var entries = configured.ToList();
+        var duplicates = entries.GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var allowed = new List<EnabledRepository>();
-        foreach (var entry in configured)
+        foreach (var entry in entries)
         {
-            var reason = await CheckAsync(entry.Name, cancellationToken).ConfigureAwait(false);
+            var reason = ConfigurationRefusal(entry, duplicates);
+            reason ??= await CheckAsync(entry.Name, cancellationToken).ConfigureAwait(false);
             if (reason is null)
             {
-                allowed.Add(new EnabledRepository(RepositoryName.Parse(entry.Name), entry.MaxConcurrent));
+                var parsed = RepositoryName.Parse(entry.Name);
+                allowed.Add(new EnabledRepository(parsed, entry.MaxConcurrent));
                 _reported.RemoveWhere(key => key.StartsWith(entry.Name + "|", StringComparison.OrdinalIgnoreCase));
             }
             else if (_reported.Add($"{entry.Name}|{reason}"))
@@ -37,6 +42,16 @@ internal sealed partial class RepositoryGuard(
         return allowed;
     }
 
+    private static string? ConfigurationRefusal(RepositoryOptions entry, HashSet<string> duplicates)
+    {
+        if (duplicates.Contains(entry.Name))
+        {
+            return "duplicate repository configuration";
+        }
+
+        return entry.MaxConcurrent < 0 ? "negative MaxConcurrent" : null;
+    }
+
     private async Task<string?> CheckAsync(string configuredName, CancellationToken cancellationToken)
     {
         if (RepositoryName.TryParse(configuredName) is not { } name)
@@ -44,10 +59,10 @@ internal sealed partial class RepositoryGuard(
             return "not an owner/name repository";
         }
 
-        var owner = options.Value.Owner;
-        if (!string.Equals(name.Owner, owner, StringComparison.OrdinalIgnoreCase))
+        var owner = name.Owner;
+        if (!options.Value.AllowsOwner(name.Owner))
         {
-            return $"not owned by {owner}";
+            return "owner is not authorized";
         }
 
         RepositoryInfo info;
@@ -55,9 +70,10 @@ internal sealed partial class RepositoryGuard(
         {
             info = await api.GetRepositoryAsync(name, cancellationToken).ConfigureAwait(false);
         }
-        catch (GitHubApiException exception)
+        catch (Exception exception) when (exception is GitHubApiException or GitHubCredentialException or System.Text.Json.JsonException or HttpRequestException
+            || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
-            return $"not readable by the App installation ({exception.StatusCode?.ToString() ?? "no status"})";
+            return "not readable by the App installation";
         }
 
         if (!info.IsPrivate)
@@ -65,9 +81,9 @@ internal sealed partial class RepositoryGuard(
             return "public";
         }
 
-        return string.Equals(info.OwnerLogin, owner, StringComparison.OrdinalIgnoreCase)
+        return info.Name == name && string.Equals(info.OwnerLogin, owner, StringComparison.OrdinalIgnoreCase)
             ? null
-            : $"owned by {info.OwnerLogin} according to GitHub";
+            : "repository identity is inconsistent according to GitHub";
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Repository {Repository} refused: {Reason}. It gets no runners until this changes.")]

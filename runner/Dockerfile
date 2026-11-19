@@ -2,7 +2,8 @@
 # job, then the container is removed (docs/adr/0004-ephemeral-runner-lifecycle.md).
 # Moved from saas-foundry eng/runners/ with the same pinned base image and checksums.
 # Everything the GitHub-hosted ubuntu-24.04 image gives the jobs for free and the jobs use:
-# git, curl, jq, unzip, gh, pwsh, the Docker CLI and a Java runtime for the Sonar scanner.
+# git, curl, jq, unzip, gh, pwsh, the Docker CLI with the Compose and Buildx plugins, and a
+# Java runtime for the Sonar scanner.
 # The .NET SDK is not here: setup-dotnet installs the pinned one per job.
 FROM ubuntu:24.04@sha256:2198e4c65076e9cb0b3d695219df667c0e3b0072da64ca3c2648aca17dcecaf5
 
@@ -27,7 +28,8 @@ RUN apt-get update \
  && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
  && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list \
  && apt-get update \
- && apt-get install -y --no-install-recommends docker-ce-cli \
+ && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin docker-buildx-plugin \
+ && docker compose version && docker buildx version \
  && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL -o /tmp/gh.tgz "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \

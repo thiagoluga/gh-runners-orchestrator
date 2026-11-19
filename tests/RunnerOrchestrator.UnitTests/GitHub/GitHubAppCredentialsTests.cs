@@ -17,7 +17,7 @@ public sealed class GitHubAppCredentialsTests : IDisposable
     private readonly FakeHttpHandler _handler = new();
     private readonly ListLogger<GitHubAppCredentials> _logger = new();
     private MutableOptionsMonitor<RepositoryListOptions>? _repositories;
-    private string _installed = """{"repositories":[{"full_name":"thiagoluga/runner-pool-sandbox","private":true,"owner":{"login":"thiagoluga"}},{"full_name":"thiagoluga/other","private":true,"owner":{"login":"thiagoluga"}},{"full_name":"someone/else","private":true,"owner":{"login":"someone"}}]}""";
+    private string _installed = """{"repositories":[{"full_name":"thiagoluga/runner-pool-sandbox","private":true,"owner":{"login":"thiagoluga"}},{"full_name":"thiagoluga/other","private":true,"owner":{"login":"thiagoluga"}}]}""";
 
     [Fact]
     public async Task GetInstallationToken_RepositoryListReloaded_RescopesBeforeExpiry()
@@ -41,7 +41,7 @@ public sealed class GitHubAppCredentialsTests : IDisposable
         using var key = RSA.Create(2048);
         File.WriteAllText(_keyPath, key.ExportRSAPrivateKeyPem());
         _handler
-            .On(HttpMethod.Get, "/users/thiagoluga/installation", HttpStatusCode.OK, """{"id":42}""")
+            .On(HttpMethod.Get, "/users/thiagoluga/installation", HttpStatusCode.OK, """{"id":42,"app_id":12345,"account":{"login":"thiagoluga"}}""")
             .On(HttpMethod.Post, "/app/installations/42/access_tokens", request => FakeHttpHandler.Json(
                 HttpStatusCode.Created,
                 $$"""{"token":"{{(IsScoped(request) ? Token : MetadataToken)}}","expires_at":"{{_time.GetUtcNow().AddHours(1):O}}"}"""))
@@ -101,7 +101,7 @@ public sealed class GitHubAppCredentialsTests : IDisposable
         await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
         ScopedTokenRequests().Should().ContainSingle();
 
-        _installed = """{"repositories":[{"full_name":"thiagoluga/runner-pool-sandbox"},{"full_name":"thiagoluga/late"}]}""";
+        _installed = """{"repositories":[{"full_name":"thiagoluga/runner-pool-sandbox","private":true,"owner":{"login":"thiagoluga"}},{"full_name":"thiagoluga/late","private":true,"owner":{"login":"thiagoluga"}}]}""";
         _time.Advance(TimeSpan.FromSeconds(1));
         await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
 
@@ -159,7 +159,7 @@ public sealed class GitHubAppCredentialsTests : IDisposable
 
         var act = async () => await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
 
-        (await act.Should().ThrowAsync<GitHubApiException>()).WithMessage("*covers no repository of thiagoluga*");
+        (await act.Should().ThrowAsync<GitHubApiException>()).WithMessage("*inconsistent installed repository identity*");
         ScopedTokenRequests().Should().BeEmpty();
     }
 
@@ -176,7 +176,7 @@ public sealed class GitHubAppCredentialsTests : IDisposable
     }
 
     [Fact]
-    public async Task GetInstallationToken_CloseToExpiry_RenewsButKeepsTheInstallation()
+    public async Task GetInstallationToken_CloseToExpiry_RevalidatesTheInstallation()
     {
         using var credentials = Create();
         await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
@@ -185,7 +185,7 @@ public sealed class GitHubAppCredentialsTests : IDisposable
         await credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
 
         ScopedTokenRequests().Should().HaveCount(2);
-        _handler.Requests.Count(r => r.Uri.AbsolutePath == "/users/thiagoluga/installation").Should().Be(1);
+        _handler.Requests.Count(r => r.Uri.AbsolutePath == "/users/thiagoluga/installation").Should().Be(2);
     }
 
     [Fact]
@@ -224,6 +224,19 @@ public sealed class GitHubAppCredentialsTests : IDisposable
         var thrown = await act.Should().ThrowAsync<InvalidOperationException>();
         thrown.Which.Message.Should().NotContain("secret-content");
         thrown.Which.InnerException.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("{\"repositories\":[{\"full_name\":\"thiagoluga/shared\",\"private\":true,\"owner\":{\"login\":\"maozinha\"}}]}")]
+    [InlineData("{\"repositories\":[{\"full_name\":\"invalid\",\"private\":true,\"owner\":{\"login\":\"thiagoluga\"}}]}")]
+    public async Task GetInstallationToken_InconsistentInstalledRepository_RefusesBeforeIssuingPoolToken(string installed)
+    {
+        _installed = installed;
+        using var credentials = Create();
+        var act = () => credentials.GetInstallationTokenAsync(TestContext.Current.CancellationToken);
+        await act.Should().ThrowAsync<GitHubApiException>();
+        ScopedTokenRequests().Should().BeEmpty();
+        _handler.Requests.Where(r => r.Method == HttpMethod.Delete).Should().ContainSingle();
     }
 
     public void Dispose()

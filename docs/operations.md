@@ -44,10 +44,16 @@ docker compose logs -f --tail 20
 
 Expect `Installation token renewed …` and then one `Cycle: …` line per poll interval.
 
+## Multiple accounts
+
+See [multi-account.md](multi-account.md). Account/installation changes need a restart and
+explicit deployment approval. Existing `Owner` installations require no configuration
+change to run the new binary. Repository-list edits still reload without restarting.
+
 ## Enable or disable a repository
 
 1. **Enable**: GitHub → the App → **Install App** → configure → add the repository (private,
-   owned by the configured owner). Then add it to `config/repositories.json`. The orchestrator
+   owned by an explicitly authorized account). Then add it to `config/repositories.json`. The orchestrator
    reloads the file on the next cycle; no restart. Aim the repository's jobs at the pool
    label (`runs-on: vm-pool`).
 2. **Disable**: remove it from `config/repositories.json`. Jobs already running finish; no new
@@ -59,7 +65,7 @@ whose tests assume a host of their own, for example those that start the same As
 application in parallel jobs. saas-foundry runs this way
 ([#35](https://github.com/thiagoluga/gh-runners-orchestrator/issues/35)).
 
-A listed repository that is public, owned by someone else or not covered by the installation
+A listed repository that is public, owned by an unauthorized account or not covered by the installation
 is refused with a `Repository … refused: …` warning. When the App is installed on a repository
 that is already listed, the token picks it up within 5 minutes: while a listed repository is
 outside the token, the orchestrator scopes a new one at that interval (log reason
@@ -89,6 +95,10 @@ No log line ever contains a token, the key or a JIT configuration.
   use the new image; the host pulls it on the first launch. The `runner-version` workflow opens
   a pull request when GitHub releases a new runner; the orchestrator also warns in its log when
   the configured runner is older than the latest release.
+- **Runner image, same tag**: a change to `runner/` that keeps the runner version republishes
+  the same tag (for example `2.338.2`), and the host pulls only a tag it does not have. Pull it
+  once: `docker pull ghcr.io/thiagoluga/gh-runners-orchestrator-runner:<tag>`. The next runner
+  uses it; no restart is needed.
 
 ## Rotate the App key
 
@@ -123,3 +133,9 @@ again as soon as the first cycle runs.
 
 `docker compose down` stops the orchestrator only. Runners already running finish their job and
 stay as exited containers until the orchestrator runs again.
+
+## Multiple private Apps
+
+See [multiple-apps.md](multiple-apps.md) for the App registry, explicit account bindings,
+legacy configuration compatibility, key mounts and deployment/rollback approval gates.
+The original App can remain private; do not change its visibility for this option.

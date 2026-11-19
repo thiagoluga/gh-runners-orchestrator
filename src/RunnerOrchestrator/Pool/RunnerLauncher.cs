@@ -45,18 +45,29 @@ internal sealed partial class RunnerLauncher(
         string? containerId = null;
         try
         {
+            var labels = new Dictionary<string, string>
+            {
+                [ManagedLabels.Managed] = "true",
+                [ManagedLabels.Repository] = repository.ToString(),
+                [ManagedLabels.Slot] = slot.Name,
+                [ManagedLabels.RunnerName] = jit.RunnerName,
+                [ManagedLabels.RunnerId] = jit.RunnerId.ToString(CultureInfo.InvariantCulture),
+                [ManagedLabels.CreatedAt] = time.GetUtcNow().ToString("O", CultureInfo.InvariantCulture),
+            };
+            if (api.GetAppId(repository) is { } appId)
+            {
+                labels[ManagedLabels.AppId] = appId.ToString(CultureInfo.InvariantCulture);
+            }
+
+            if (api.GetInstallationId(repository) is { } installationId)
+            {
+                labels[ManagedLabels.InstallationId] = installationId.ToString(CultureInfo.InvariantCulture);
+            }
+
             var spec = new ContainerSpec(
                 Name: name,
                 Image: settings.RunnerImage,
-                Labels: new Dictionary<string, string>
-                {
-                    [ManagedLabels.Managed] = "true",
-                    [ManagedLabels.Repository] = repository.ToString(),
-                    [ManagedLabels.Slot] = slot.Name,
-                    [ManagedLabels.RunnerName] = jit.RunnerName,
-                    [ManagedLabels.RunnerId] = jit.RunnerId.ToString(CultureInfo.InvariantCulture),
-                    [ManagedLabels.CreatedAt] = time.GetUtcNow().ToString("O", CultureInfo.InvariantCulture),
-                },
+                Labels: labels,
                 Environment: new Dictionary<string, string> { [JitConfigVariable] = jit.EncodedJitConfig },
                 Cpuset: slot.Cpuset,
                 MemoryBytes: memory,
@@ -79,7 +90,7 @@ internal sealed partial class RunnerLauncher(
     internal static string CreateRunnerName(RepositoryName repository, string slot, string suffix)
     {
         var tail = $"-{Sanitize(slot)}-{suffix}";
-        var repo = Sanitize(repository.Name);
+        var repo = Sanitize($"{repository.Owner}-{repository.Name}");
         var room = MaxNameLength - "orch-".Length - tail.Length;
         if (repo.Length > room)
         {
@@ -113,7 +124,7 @@ internal sealed partial class RunnerLauncher(
 
             await api.DeleteRunnerAsync(repository, jit.RunnerId, timeout.Token).ConfigureAwait(false);
         }
-        catch (Exception exception) when (exception is GitHubApiException or DockerEngineException or HttpRequestException or OperationCanceledException)
+        catch (Exception exception) when (exception is GitHubApiException or GitHubCredentialException or DockerEngineException or HttpRequestException or OperationCanceledException)
         {
             LogUndoFailed(logger, jit.RunnerName, exception.Message);
         }

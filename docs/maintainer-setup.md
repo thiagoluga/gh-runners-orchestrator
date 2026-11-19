@@ -42,7 +42,13 @@ On the App's page:
    That file is the credential. Do not open it in an editor that syncs, and do not paste it
    anywhere.
 3. Left menu **Install App** → **Install** next to `thiagoluga` → **Only select
-   repositories** → `runner-pool-sandbox` only (section 3) → **Install**.
+   repositories** → only the private repositories the pool will serve; start with
+   `runner-pool-sandbox` (section 3) → **Install**. Never **All repositories**: the App could
+   then act on every repository of the account, public ones included.
+
+Adding a repository later: the App → **Install App** → the gear next to the account →
+**Repository access** → add it, then list it in `config/repositories.json` on the host
+([operations.md](operations.md#enable-or-disable-a-repository)).
 
 ### Copy the key to the host
 
@@ -66,6 +72,12 @@ official .NET container images, which the orchestrator image runs as.
 
 Then delete the `.pem` from `Downloads` on the PC. A lost key is not a problem: generate a
 new one on the App page and delete the old one there.
+
+## Additional personal accounts
+
+The initial App setup above is single-account. Before enabling another account, follow
+[the metadata and approval gates](multi-account.md#app-installation-gate); do not assume
+this App can already be installed there. App ID and installation ID are different values.
 
 ## 2. SonarQube Cloud
 
@@ -115,3 +127,9 @@ gh api /repos/thiagoluga/gh-runners-orchestrator/actions/secrets --jq '.secrets[
 
 The App's permissions and installation list are read with a JWT on the host, in the proof
 of concept.
+
+## Multiple private Apps
+
+See [multiple-apps.md](multiple-apps.md) for the App registry, explicit account bindings,
+legacy configuration compatibility, key mounts and deployment/rollback approval gates.
+The original App can remain private; do not change its visibility for this option.

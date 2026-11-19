@@ -1,9 +1,9 @@
 # gh-runners-orchestrator
 
-One pool of self-hosted GitHub Actions capacity for several repositories of a **personal
-account**, with **one fresh container per job**.
+One pool of self-hosted GitHub Actions capacity for several repositories of
+**explicitly authorized personal accounts**, with **one fresh container per job**.
 
-> Status: design. No code yet. See [PLAN.md](PLAN.md) and the
+> Status: pool implemented; multi-account activation pending. See [PLAN.md](PLAN.md) and the
 > [roadmap](https://github.com/thiagoluga/gh-runners-orchestrator/issues/1).
 
 ## Why
@@ -29,8 +29,9 @@ Every runner container shares the host's Docker socket and network. **Any job ca
 control every other job on the host**, including other repositories' jobs and their
 secrets. Enable only **private repositories you own**, on a host that holds nothing else.
 Never use self-hosted runners for public repositories: a fork's pull request would run its
-code on your host. The orchestrator refuses public repositories and other owners, but the
-rule matters more than the check. Details: [ADR 0006](docs/adr/0006-security-model.md).
+code on your host. The orchestrator refuses public repositories and unauthorized owners, but the
+rule matters more than the check. Details: [ADR 0006](docs/adr/0006-security-model.md) and
+[ADR 0011](docs/adr/0011-multiple-account-installations.md).
 
 ## Requirements
 
@@ -39,7 +40,15 @@ rule matters more than the check. Details: [ADR 0006](docs/adr/0006-security-mod
 - A GitHub App you own, installed on the enabled repositories, with Actions read and
   Administration read and write ([ADR 0002](docs/adr/0002-github-app-credential.md)).
 
+## Setup
+
+1. Create the GitHub App, install it on the repositories to serve and copy its key to the
+   host: [docs/maintainer-setup.md](docs/maintainer-setup.md).
+2. Install and run the pool on the host: [docs/operations.md](docs/operations.md).
+
 ## Contributing
+
+Multi-account configuration and activation gates: [docs/multi-account.md](docs/multi-account.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Security reports: [SECURITY.md](SECURITY.md).
 

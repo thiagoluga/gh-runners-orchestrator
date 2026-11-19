@@ -5,8 +5,19 @@ public sealed class OrchestratorOptions
 {
     public const string SectionName = "Orchestrator";
 
-    /// <summary>The account that owns every enabled repository.</summary>
+    /// <summary>Legacy single owner; mutually exclusive with Accounts.</summary>
     public string Owner { get; set; } = string.Empty;
+
+    /// <summary>Explicit trusted owner/installation pairs; changing these requires a restart.</summary>
+    public IList<AccountOptions> Accounts { get; } = [];
+
+    public bool AllowsOwner(string owner) => Accounts.Count == 0
+        ? string.Equals(Owner, owner, StringComparison.OrdinalIgnoreCase)
+        : Accounts.Any(a => string.Equals(a.Owner, owner, StringComparison.OrdinalIgnoreCase));
+
+    public IEnumerable<AccountOptions> EffectiveAccounts() => Accounts.Count == 0
+        ? [new AccountOptions { Owner = Owner }]
+        : Accounts;
 
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(20);
 
@@ -26,6 +37,18 @@ public sealed class OrchestratorOptions
     public int DockerSocketGroupId { get; set; }
 
     public GitHubAppOptions GitHubApp { get; set; } = new();
+
+    /// <summary>Optional App registry; mutually exclusive with a configured legacy GitHubApp.</summary>
+    public IList<GitHubAppOptions> GitHubApps { get; } = [];
+
+    public IEnumerable<GitHubAppOptions> EffectiveApps() => GitHubApps.Count == 0 ? [GitHubApp] : GitHubApps;
+
+    public GitHubAppOptions AppFor(AccountOptions account) => GitHubApps.Count == 0
+        ? GitHubApp
+        : GitHubApps.Single(app => app.AppId == account.AppId);
+
+    public GitHubAppOptions AppForOwner(string owner) => AppFor(EffectiveAccounts()
+        .Single(account => string.Equals(account.Owner, owner, StringComparison.OrdinalIgnoreCase)));
 
     public IList<SlotOptions> Slots { get; } = [];
 }

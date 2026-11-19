@@ -12,15 +12,15 @@ ADRs 0001–0008, and the four delivery PRs below.
 | 1 | [P1 Design and repository setup](https://github.com/thiagoluga/gh-runners-orchestrator/issues/2) | [#7](https://github.com/thiagoluga/gh-runners-orchestrator/issues/7) | done |
 | — | maintainer step | [#8](https://github.com/thiagoluga/gh-runners-orchestrator/issues/8) GitHub App, Sonar project, toy repository | done |
 | 2 | [P2 Proof of concept and CI baseline](https://github.com/thiagoluga/gh-runners-orchestrator/issues/3) | [#9](https://github.com/thiagoluga/gh-runners-orchestrator/issues/9), [#10](https://github.com/thiagoluga/gh-runners-orchestrator/issues/10), [#11](https://github.com/thiagoluga/gh-runners-orchestrator/issues/11), [#12](https://github.com/thiagoluga/gh-runners-orchestrator/issues/12) | done |
-| 3 | [P3 Runner pool](https://github.com/thiagoluga/gh-runners-orchestrator/issues/4) | [#13](https://github.com/thiagoluga/gh-runners-orchestrator/issues/13), [#14](https://github.com/thiagoluga/gh-runners-orchestrator/issues/14), [#15](https://github.com/thiagoluga/gh-runners-orchestrator/issues/15), [#16](https://github.com/thiagoluga/gh-runners-orchestrator/issues/16), [#17](https://github.com/thiagoluga/gh-runners-orchestrator/issues/17) | in review |
-| 4 | [P4 saas-foundry migration](https://github.com/thiagoluga/gh-runners-orchestrator/issues/5) | [#18](https://github.com/thiagoluga/gh-runners-orchestrator/issues/18); then [#19](https://github.com/thiagoluga/gh-runners-orchestrator/issues/19) after confirmation | not started |
+| 3 | [P3 Runner pool](https://github.com/thiagoluga/gh-runners-orchestrator/issues/4) | [#13](https://github.com/thiagoluga/gh-runners-orchestrator/issues/13), [#14](https://github.com/thiagoluga/gh-runners-orchestrator/issues/14), [#15](https://github.com/thiagoluga/gh-runners-orchestrator/issues/15), [#16](https://github.com/thiagoluga/gh-runners-orchestrator/issues/16), [#17](https://github.com/thiagoluga/gh-runners-orchestrator/issues/17) | done ([pool-verification.md](docs/pool-verification.md)) |
+| 4 | [P4 saas-foundry migration](https://github.com/thiagoluga/gh-runners-orchestrator/issues/5) | [#18](https://github.com/thiagoluga/gh-runners-orchestrator/issues/18); then [#19](https://github.com/thiagoluga/gh-runners-orchestrator/issues/19) after confirmation | #18 done (two green runs, saas-foundry at one slot, [#35](https://github.com/thiagoluga/gh-runners-orchestrator/issues/35)); #19 done (`vm-dev` served by the pool) |
 | — | [P5 Deferred](https://github.com/thiagoluga/gh-runners-orchestrator/issues/6) | [#20](https://github.com/thiagoluga/gh-runners-orchestrator/issues/20), [#21](https://github.com/thiagoluga/gh-runners-orchestrator/issues/21), [#22](https://github.com/thiagoluga/gh-runners-orchestrator/issues/22) | deferred, not authorized |
 
 ## Constraints every phase keeps
 
-- The current runner `vm-dev-1` (saas-foundry) keeps working until the pool has proved the
-  same CI green: foundation, generator, generated-project, Sonar.
-- The pool registers runners with label `vm-pool` until [#19](https://github.com/thiagoluga/gh-runners-orchestrator/issues/19).
+- `vm-dev-1` was retired on 2026-11-15, after the pool proved the same CI green
+  (foundation, generator, generated-project, Sonar). The pool serves `vm-pool` and `vm-dev`
+  ([#19](https://github.com/thiagoluga/gh-runners-orchestrator/issues/19)).
 - Measured facts from saas-foundry (`docs/ci-runners.md` there): `nofile` 65536, real Docker
   Engine, `cpuset` not quota, 14 GB peak, about 12 minutes per pull request, uplink about
   90 KB/s. Images are built by CI and pulled by the host, never pushed from it.

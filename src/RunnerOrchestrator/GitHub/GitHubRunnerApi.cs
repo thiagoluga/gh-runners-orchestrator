@@ -26,6 +26,12 @@ internal sealed class GitHubRunnerApi(HttpClient http, IGitHubCredentialSource c
 
     private readonly ConcurrentDictionary<string, CachedResponse> _cache = new(StringComparer.Ordinal);
 
+    public void ClearCache() => _cache.Clear();
+
+    public long? GetInstallationId(RepositoryName repository) => credentials.InstallationId;
+
+    public RateLimitStatus? GetRateLimit(RepositoryName repository) => RateLimit;
+
     public RateLimitStatus? RateLimit { get; private set; }
 
     public async Task<IReadOnlyList<long>> ListRunIdsAsync(RepositoryName repository, string status, CancellationToken cancellationToken)
@@ -71,7 +77,8 @@ internal sealed class GitHubRunnerApi(HttpClient http, IGitHubCredentialSource c
         request.Content = JsonContent.Create(body, GitHubJsonContext.Default.JitConfigRequest);
         using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
         var result = await response.Content.ReadFromJsonAsync(GitHubJsonContext.Default.JitConfigResponse, cancellationToken).ConfigureAwait(false);
-        if (result?.Runner is null || string.IsNullOrEmpty(result.EncodedJitConfig))
+        if (result?.Runner is null || string.IsNullOrEmpty(result.EncodedJitConfig)
+            || result.Runner.Id <= 0 || !string.Equals(result.Runner.Name, runnerName, StringComparison.Ordinal))
         {
             throw new GitHubApiException("GitHub returned a JIT configuration response without a runner or configuration.");
         }
@@ -94,7 +101,13 @@ internal sealed class GitHubRunnerApi(HttpClient http, IGitHubCredentialSource c
     public async Task<RepositoryInfo> GetRepositoryAsync(RepositoryName repository, CancellationToken cancellationToken)
     {
         var response = await GetAsync($"repos/{repository}", GitHubJsonContext.Default.RepositoryDto, cancellationToken).ConfigureAwait(false);
-        return new RepositoryInfo(RepositoryName.Parse(response.FullName), response.Private, response.Owner.Login);
+        if (RepositoryName.TryParse(response.FullName) is not { } name || name != repository
+            || !string.Equals(response.Owner?.Login, repository.Owner, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new GitHubApiException("GitHub returned an inconsistent repository identity.");
+        }
+
+        return new RepositoryInfo(name, response.Private, response.Owner!.Login);
     }
 
     public async Task<string> GetLatestRunnerVersionAsync(CancellationToken cancellationToken)

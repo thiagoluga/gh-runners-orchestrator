@@ -6,9 +6,11 @@ the task needs them.
 ## Product boundary
 
 An orchestrator of ephemeral GitHub Actions runners: one container per job, a fixed pool
-of slots shared by the maintainer's **private** repositories on one Linux Docker Engine
+of slots shared by **private** repositories in explicitly authorized accounts trusted by
+the maintainer on one Linux Docker Engine
 host. Out of scope until an ADR says otherwise: web UI, Kubernetes, several hosts, public
-or third-party repositories, autoscaling of hosts.
+or untrusted third-party repositories, autoscaling of hosts. See
+[ADR 0011](../adr/0011-multiple-account-installations.md) for account authorization.
 
 ## Non-negotiable
 
@@ -21,7 +23,9 @@ or third-party repositories, autoscaling of hosts.
 3. **Nothing is "working" until it ran for real** and the result line was read. Report
    what was measured, what was not verified, and what needs Thiago's decision.
 4. **This repository's CI runs only on GitHub-hosted runners.** It is public.
-5. **The current runner `vm-dev-1` stays untouched** until [#19](https://github.com/thiagoluga/gh-runners-orchestrator/issues/19).
+5. **saas-foundry's CI depends on the pool** since `vm-dev-1` was retired
+   ([#19](https://github.com/thiagoluga/gh-runners-orchestrator/issues/19)): a host change that
+   stops the pool stops that CI. Its fallback is `CI_RUNNER=gh` there.
 6. **Confirm before destructive actions** on the host (removing containers, volumes,
    runner registrations not created by the orchestrator, `docker system prune`).
 7. Capacity uses `cpuset` and memory limits, **never a CPU quota** (measured to throttle).
@@ -31,13 +35,17 @@ or third-party repositories, autoscaling of hosts.
 - Branch from `main`, PR to `main`, one open PR at a time, PRs grouped per phase; merge
   when every required check is green and every thread is resolved. Documentation-only
   changes go straight to `main`, without a PR; CI ignores them
-  ([ADR 0007](../adr/0007-branching-and-delivery.md)).
-- Conventional Commits. Author Thiago, committer Claude:
-  `GIT_COMMITTER_NAME=Claude GIT_COMMITTER_EMAIL=noreply@anthropic.com git commit`
-  with the repo-local identity `Thiago Lugarini <thiagoluga@hotmail.com>`. Trailer
-  `Co-Authored-By: Claude <model> <noreply@anthropic.com>`. Never `--no-verify`.
-- Before a code commit: build, tests and format green, `/code-review` and
-  `/security-review` on the diff, fix what is real.
+  ([ADR 0007](../adr/0007-branching-and-delivery.md)). If the maintainer explicitly asks
+  for a documentation PR, use a branch and PR; PR checks run even for documentation.
+  See [ADR 0010](../adr/0010-agent-compatible-contribution-workflow.md).
+  Leave merging to the maintainer when requested.
+- Conventional Commits. Author: repo-local identity
+  `Thiago Lugarini <thiagoluga@hotmail.com>`. Use the active agent's committer identity
+  and co-author trailer from its entry point (`AGENTS.md` for Codex, `CLAUDE.md` for
+  Claude). Never impersonate another agent or invent a model name. Never `--no-verify`.
+- Before a code or workflow commit: build, tests and format green. Before every commit,
+  review the full pending diff for correctness and security using the active agent's
+  entry point. Fix real findings and report unavailable checks honestly.
 - After push: CI green, Sonar at zero new issues, CodeQL clean, every review thread
   answered and resolved.
 - Packages: only the approved list in [ADR 0003](../adr/0003-stack-dotnet-worker-service.md).
@@ -49,8 +57,8 @@ or third-party repositories, autoscaling of hosts.
 The pool runs on its own VM, `gh-runner-2`: Ubuntu 24.04 on Hyper-V, 16 vCPUs, 40 GiB of fixed memory,
 static `192.168.68.66/22`, Docker Engine 29 (`nofile` 65536 by default, cgroup v2), user
 `ci` with passwordless sudo, SSH by key only:
-`ssh -i ~/.ssh/ci_vm_ed25519 ci@192.168.68.66`. The old VM `192.168.68.50` runs `vm-dev-1`
-and is not touched (rule 5). From Windows, use SSH from PowerShell;
+`ssh -i ~/.ssh/ci_vm_ed25519 ci@192.168.68.66`. The old VM `192.168.68.50` (`vm-dev-1`) is
+retired and was off at the time; its runner container and volumes may still be on its disk. From Windows, use SSH from PowerShell;
 send scripts by `scp` and run them with `bash file < /dev/null` (piped scripts get CRLF and
 `docker exec -i` swallows stdin). Do not hammer the SSH port with polling.
 
@@ -85,3 +93,7 @@ Numbered, dated, never rewritten.
 6. (2026-11-15) The account has no GitHub-hosted minutes for private repositories: a job on
    `ubuntu-24.04` in the sandbox is refused at once. Private repositories run every job on
    the pool; this public repository's CI is unaffected.
+
+7. (2026-11-16) Job concurrency can mark a workflow `pending` while another job is
+   already `queued` for a runner. Poll pending runs too, but count only served queued
+   jobs; pending jobs themselves are not runnable demand (fixed in #42).

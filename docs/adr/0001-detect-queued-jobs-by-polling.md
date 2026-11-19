@@ -26,10 +26,13 @@ job up 20 seconds later than a webhook would is not noticeable.
 
 Poll, per enabled repository, on a fixed interval (default 20 s, configurable):
 
-1. `GET /repos/{owner}/{repo}/actions/runs?status=queued` **and**
+1. `GET /repos/{owner}/{repo}/actions/runs?status=queued`,
+   `GET /repos/{owner}/{repo}/actions/runs?status=pending` and
    `GET /repos/{owner}/{repo}/actions/runs?status=in_progress`. A run that already has one
    job running is `in_progress` while its later jobs (matrix legs, jobs behind `needs:`)
-   are still `queued`; listing only queued runs would miss them.
+   are still `queued`; listing only queued runs would miss them. Job concurrency can also
+   mark the run `pending` while another job is queued for a runner (observed 2026-11-16).
+   Pending jobs themselves are never counted as runnable demand.
 2. For each of those runs, `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs?filter=latest`
    and keep jobs with `status == "queued"` whose `labels` are all served by the pool
    (case-insensitive subset match).
@@ -55,8 +58,8 @@ later without touching the scheduler.
 ## Consequences
 
 - Rate limit budget. An installation token has at least 5,000 requests per hour. An idle
-  repository costs two conditional requests per cycle, almost always `304`. A busy one
-  adds one request per active run. With 10 repositories at 20 s that is 3,600 requests per
+  repository costs three conditional requests per cycle, almost always `304`. A busy one
+  adds one request per active run. With 8 repositories at 20 s that is 4,320 requests per
   hour in the worst case where nothing returns `304`; the orchestrator logs the remaining
   budget (`x-ratelimit-remaining`) and backs off when it drops under 10%.
 - Latency of up to one interval between "queued" and "container starting".

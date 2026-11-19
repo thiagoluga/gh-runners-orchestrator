@@ -42,6 +42,10 @@ internal static class LifecyclePlanner
 
             var age = container.CreatedAt is { } created ? now - created : TimeSpan.Zero;
             var runner = runners.FirstOrDefault(r => string.Equals(r.Name, container.RunnerName, StringComparison.OrdinalIgnoreCase));
+            if (runner is not null && container.RunnerId is not null && runner.Id != container.RunnerId)
+            {
+                continue;
+            }
             switch (Classify(runner, age, suspects.Contains(container.ContainerId), idleTimeout, grace))
             {
                 case ContainerVerdict.Idle:
@@ -58,13 +62,13 @@ internal static class LifecyclePlanner
             }
         }
 
-        var withContainer = live.Select(c => c.RunnerName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var withContainer = live.Select(c => (c.Repository, Name: c.RunnerName.ToLowerInvariant())).ToHashSet();
         var orphanRunners = runnersByRepository
             .SelectMany(pair => pair.Value.Select(runner => new OrphanRunner(pair.Key, runner)))
             .Where(o => o.Runner.Name.StartsWith(RunnerPrefix, StringComparison.OrdinalIgnoreCase)
                 && !o.Runner.Busy
                 && string.Equals(o.Runner.Status, "offline", StringComparison.OrdinalIgnoreCase)
-                && !withContainer.Contains(o.Runner.Name))
+                && !withContainer.Contains((o.Repository, o.Runner.Name.ToLowerInvariant())))
             .ToList();
 
         return new LifecyclePlan(idle, orphanContainers, orphanRunners, newSuspects);
@@ -101,7 +105,9 @@ internal sealed record ManagedRunner(
     string Slot,
     string RunnerName,
     long? RunnerId,
-    DateTimeOffset? CreatedAt);
+    DateTimeOffset? CreatedAt,
+    long? InstallationId = null,
+    long? AppId = null);
 
 internal sealed record OrphanRunner(RepositoryName Repository, SelfHostedRunner Runner);
 

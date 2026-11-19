@@ -9,10 +9,7 @@ internal sealed class OrchestratorOptionsValidator : IValidateOptions<Orchestrat
     public ValidateOptionsResult Validate(string? name, OrchestratorOptions options)
     {
         var errors = new List<string>();
-        if (string.IsNullOrWhiteSpace(options.Owner))
-        {
-            errors.Add("Orchestrator:Owner is required.");
-        }
+        ValidateAccounts(options, errors);
 
         if (options.PollInterval < TimeSpan.FromSeconds(5))
         {
@@ -39,18 +36,92 @@ internal sealed class OrchestratorOptionsValidator : IValidateOptions<Orchestrat
             errors.Add("Orchestrator:DockerSocketGroupId is required (stat -c %g /var/run/docker.sock).");
         }
 
-        if (options.GitHubApp.AppId <= 0)
-        {
-            errors.Add("Orchestrator:GitHubApp:AppId is required.");
-        }
-
-        if (string.IsNullOrWhiteSpace(options.GitHubApp.PrivateKeyPath))
-        {
-            errors.Add("Orchestrator:GitHubApp:PrivateKeyPath is required.");
-        }
+        ValidateApps(options, errors);
 
         ValidateSlots(options.Slots, errors);
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
+    }
+
+    private static void ValidateAccounts(OrchestratorOptions options, List<string> errors)
+    {
+        if (options.Accounts.Count == 0)
+        {
+            if (RepositoryName.TryParse($"{options.Owner}/repository") is null)
+            {
+                errors.Add("Orchestrator:Owner is required and must be a valid account name.");
+            }
+
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(options.Owner))
+        {
+            errors.Add("Use either Orchestrator:Owner or Accounts, never both.");
+        }
+
+        if (options.Accounts.Any(a => RepositoryName.TryParse($"{a.Owner}/repository") is null || a.InstallationId <= 0))
+        {
+            errors.Add("Every account needs a valid Owner and a positive InstallationId.");
+        }
+
+        if (options.Accounts.Select(a => a.Owner).Distinct(StringComparer.OrdinalIgnoreCase).Count() != options.Accounts.Count
+            || options.Accounts.Select(a => a.InstallationId).Distinct().Count() != options.Accounts.Count)
+        {
+            errors.Add("Account owners and installation IDs must be unique.");
+        }
+    }
+
+    private static void ValidateApps(OrchestratorOptions options, List<string> errors)
+    {
+        ValidateAppMode(options, errors);
+
+        var apps = options.EffectiveApps().ToList();
+        if (apps.Any(app => app.AppId <= 0 || string.IsNullOrWhiteSpace(app.PrivateKeyPath)))
+        {
+            errors.Add("Every GitHubApp needs a positive AppId and a PrivateKeyPath.");
+        }
+
+        if (apps.Select(app => app.AppId).Distinct().Count() != apps.Count)
+        {
+            errors.Add("GitHubApps AppId values must be unique.");
+        }
+
+        if (apps.Any(app => !app.ApiBaseUrl.IsAbsoluteUri || app.ApiBaseUrl.Scheme != Uri.UriSchemeHttps)
+            || apps.Select(app => app.ApiBaseUrl).Distinct().Count() != 1)
+        {
+            errors.Add("All GitHubApps must use the same absolute HTTPS ApiBaseUrl.");
+        }
+
+        ValidateAppReferences(options, apps, errors);
+    }
+
+    private static void ValidateAppMode(OrchestratorOptions options, List<string> errors)
+    {
+        if (options.GitHubApps.Count > 0)
+        {
+            var defaults = new GitHubAppOptions();
+            if (options.GitHubApp.AppId != defaults.AppId || options.GitHubApp.PrivateKeyPath != defaults.PrivateKeyPath
+                || options.GitHubApp.ApiBaseUrl != defaults.ApiBaseUrl)
+            {
+                errors.Add("Use either GitHubApp or GitHubApps, never both.");
+            }
+
+            if (options.Accounts.Count == 0)
+            {
+                errors.Add("GitHubApps requires explicit Accounts with AppId references.");
+            }
+        }
+    }
+
+    private static void ValidateAppReferences(OrchestratorOptions options, List<GitHubAppOptions> apps, List<string> errors)
+    {
+        var registered = apps.Select(app => app.AppId).ToHashSet();
+        var references = options.Accounts.Select(account => account.AppId == 0 && options.GitHubApps.Count == 0
+            ? options.GitHubApp.AppId : account.AppId);
+        if (references.Any(appId => !registered.Contains(appId)))
+        {
+            errors.Add("Every account AppId must reference a registered GitHubApp.");
+        }
     }
 
     private static void ValidateSlots(IList<SlotOptions> slots, List<string> errors)

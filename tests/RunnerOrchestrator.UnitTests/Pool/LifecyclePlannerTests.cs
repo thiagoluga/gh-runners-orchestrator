@@ -70,4 +70,38 @@ public sealed class LifecyclePlannerTests
 
     private static ManagedRunner Live(string id, string runnerName, int minutesOld) =>
         new(id, Sandbox, "slot-1", runnerName, 1, Now.AddMinutes(-minutesOld));
+
+    [Fact]
+    public void Plan_HomonymousRunnersInDifferentAccounts_OnlyTheMatchingRepositoryHasAContainer()
+    {
+        var thiago = new RepositoryName("thiagoluga", "shared");
+        var mao = new RepositoryName("maozinha", "shared");
+        var now = Now;
+        var plan = LifecyclePlanner.Plan(now,
+            [new ManagedRunner("c", thiago, "slot-1", "orch-same", 7, now)],
+            new Dictionary<RepositoryName, IReadOnlyList<SelfHostedRunner>>
+            {
+                [thiago] = [new SelfHostedRunner(7, "orch-same", "online", true)],
+                [mao] = [new SelfHostedRunner(7, "orch-same", "offline", false)],
+            }, new HashSet<string>(), TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(2));
+        plan.OrphanRunners.Should().ContainSingle().Which.Repository.Should().Be(mao);
+        plan.IdleRunners.Should().BeEmpty();
+        plan.OrphanContainers.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Plan_RegistrationIdDisagreesWithContainerLabel_NeverRemovesTheContainer()
+    {
+        var repository = new RepositoryName("maozinha", "shared");
+        var now = Now;
+        var plan = LifecyclePlanner.Plan(now,
+            [new ManagedRunner("c", repository, "slot-1", "orch-same", 8, now.AddHours(-1))],
+            new Dictionary<RepositoryName, IReadOnlyList<SelfHostedRunner>>
+            {
+                [repository] = [new SelfHostedRunner(7, "orch-same", "online", false)],
+            }, new HashSet<string> { "c" }, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(2));
+        plan.IdleRunners.Should().BeEmpty();
+        plan.OrphanContainers.Should().BeEmpty();
+        plan.OrphanRunners.Should().BeEmpty();
+    }
 }

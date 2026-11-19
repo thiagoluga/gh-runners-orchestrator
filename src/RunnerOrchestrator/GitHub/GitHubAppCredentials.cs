@@ -18,7 +18,9 @@ internal sealed partial class GitHubAppCredentials(
     IOptions<OrchestratorOptions> options,
     IOptionsMonitor<RepositoryListOptions> repositories,
     TimeProvider time,
-    ILogger<GitHubAppCredentials> logger) : IGitHubCredentialSource, IDisposable
+    ILogger<GitHubAppCredentials> logger,
+    AccountOptions? account = null,
+    GitHubAppOptions? app = null) : IGitHubCredentialSource, IDisposable
 {
     /// <summary>Renew this long before GitHub's one-hour expiry.</summary>
     public static readonly TimeSpan RenewBefore = TimeSpan.FromMinutes(5);
@@ -29,7 +31,25 @@ internal sealed partial class GitHubAppCredentials(
     /// </summary>
     public static readonly TimeSpan UncoveredRescopeInterval = TimeSpan.FromMinutes(5);
 
+    private readonly GitHubAppOptions _app = app ?? options.Value.GitHubApp;
+
+    private readonly AccountOptions _account = account ?? new AccountOptions { Owner = options.Value.Owner };
+
+    public long? InstallationId => _installationId;
+
+    public IEnumerable<RepositoryName> CoveredRepositories => _covered.Select(name => new RepositoryName(_account.Owner, name));
+
+    public bool Covers(RepositoryName repository) =>
+        string.Equals(repository.Owner, _account.Owner, StringComparison.OrdinalIgnoreCase) && _covered.Contains(repository.Name);
+
+    public void Invalidate()
+    {
+        _invalidated = true;
+        _covered.Clear();
+    }
+
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private bool _invalidated;
     private RSA? _key;
     private long? _installationId;
     private string? _token;
@@ -52,8 +72,8 @@ internal sealed partial class GitHubAppCredentials(
                 return _token!;
             }
 
-            var jwt = GitHubAppJwt.Create(options.Value.GitHubApp.AppId, LoadKey(), now);
-            _installationId ??= await FindInstallationAsync(jwt, cancellationToken).ConfigureAwait(false);
+            var jwt = GitHubAppJwt.Create(_app.AppId, LoadKey(), now);
+            _installationId = await FindInstallationAsync(jwt, cancellationToken).ConfigureAwait(false);
             var (response, covered) = await CreateTokenAsync(jwt, _installationId.Value, cancellationToken).ConfigureAwait(false);
             var previous = _token;
             _token = response.Token;
@@ -61,6 +81,7 @@ internal sealed partial class GitHubAppCredentials(
             _scopedFor = configured;
             _covered = new HashSet<string>(covered, StringComparer.OrdinalIgnoreCase);
             _scopedAt = now;
+            _invalidated = false;
             LogTokenRenewed(logger, _installationId.Value, _expiresAt, reason);
             if (previous is not null)
             {
@@ -89,7 +110,7 @@ internal sealed partial class GitHubAppCredentials(
             return _key;
         }
 
-        var path = options.Value.GitHubApp.PrivateKeyPath;
+        var path = _app.PrivateKeyPath;
         string pem;
         try
         {
@@ -97,19 +118,20 @@ internal sealed partial class GitHubAppCredentials(
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            throw new InvalidOperationException($"The App private key is not readable at {path}.", exception);
+            throw new GitHubCredentialException($"The App private key is not readable at {path}.");
         }
 
         var key = RSA.Create();
         try
         {
             key.ImportFromPem(pem);
+            _ = key.ExportParameters(includePrivateParameters: true);
         }
-        catch (ArgumentException exception)
+        catch (Exception exception) when (exception is ArgumentException or CryptographicException)
         {
             key.Dispose();
             // The exception message of ImportFromPem never contains the key, but do not chain it either.
-            throw new InvalidOperationException($"The file at {path} is not a PEM private key ({exception.GetType().Name}).");
+            throw new GitHubCredentialException($"The file at {path} is not a PEM private key.");
         }
 
         _key = key;
@@ -118,12 +140,19 @@ internal sealed partial class GitHubAppCredentials(
 
     private async Task<long> FindInstallationAsync(string jwt, CancellationToken cancellationToken)
     {
-        var owner = options.Value.Owner;
+        var owner = _account.Owner;
         using var request = GitHubHttp.Request(HttpMethod.Get, $"users/{Uri.EscapeDataString(owner)}/installation", jwt);
         using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
         await GitHubHttp.EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
         var installation = await response.Content.ReadFromJsonAsync(GitHubJsonContext.Default.InstallationDto, cancellationToken).ConfigureAwait(false)
             ?? throw new GitHubApiException("GitHub returned an empty installation.");
+        if (installation.Id <= 0 || installation.AppId != _app.AppId
+            || !string.Equals(installation.Account?.Login, owner, StringComparison.OrdinalIgnoreCase)
+            || (_account.InstallationId > 0 && installation.Id != _account.InstallationId))
+        {
+            throw new GitHubApiException("GitHub returned an inconsistent App installation identity.");
+        }
+
         return installation.Id;
     }
 
@@ -133,7 +162,7 @@ internal sealed partial class GitHubAppCredentials(
         // enabled ones. Not to the configured list: a repository removed from the list still has
         // runners to clean up, and asking for one the installation does not cover would fail the
         // whole request. RepositoryGuard decides which repositories get new runners.
-        var owner = options.Value.Owner;
+        var owner = _account.Owner;
         var names = (await ListInstalledRepositoriesAsync(jwt, installationId, cancellationToken).ConfigureAwait(false))
             .Where(name => string.Equals(name.Owner, owner, StringComparison.OrdinalIgnoreCase))
             .Select(name => name.Name)
@@ -174,12 +203,24 @@ internal sealed partial class GitHubAppCredentials(
             await GitHubHttp.EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
             var list = await response.Content.ReadFromJsonAsync(GitHubJsonContext.Default.InstallationRepositoriesResponse, cancellationToken).ConfigureAwait(false);
             var repositoriesOnPage = list?.Repositories ?? [];
-            installed.AddRange(repositoriesOnPage.Select(r => RepositoryName.TryParse(r.FullName)).OfType<RepositoryName>());
+            installed.AddRange(repositoriesOnPage.Select(ParseInstalledRepository).OfType<RepositoryName>());
             if (repositoriesOnPage.Count < GitHubRunnerApi.PageSize)
             {
                 break;
             }
         }
+    }
+
+    private RepositoryName? ParseInstalledRepository(RepositoryDto repository)
+    {
+        if (RepositoryName.TryParse(repository.FullName) is not { } name
+            || !string.Equals(name.Owner, _account.Owner, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(repository.Owner?.Login, name.Owner, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new GitHubApiException("GitHub returned an inconsistent installed repository identity.");
+        }
+
+        return repository.Private ? name : null;
     }
 
     /// <summary>Best effort: a token left valid only expires on its own within the hour.</summary>
@@ -207,12 +248,14 @@ internal sealed partial class GitHubAppCredentials(
 
     /// <summary>A changed list may follow a new installation; renewing picks it up at once.</summary>
     private string ConfiguredSignature() =>
-        string.Join('|', repositories.CurrentValue.Repositories.Select(r => r.Name.ToLowerInvariant()).Order(StringComparer.Ordinal));
+        string.Join('|', repositories.CurrentValue.Repositories.Select(r => RepositoryName.TryParse(r.Name))
+            .OfType<RepositoryName>().Where(r => string.Equals(r.Owner, _account.Owner, StringComparison.OrdinalIgnoreCase))
+            .Select(r => r.ToString().ToLowerInvariant()).Order(StringComparer.Ordinal));
 
     /// <summary>Why the token must be scoped again now, or null to keep it.</summary>
     private string? RenewalReason(string configured, DateTimeOffset now)
     {
-        if (_token is null)
+        if (_token is null || _invalidated)
         {
             return "first token";
         }
@@ -238,7 +281,7 @@ internal sealed partial class GitHubAppCredentials(
             return false;
         }
 
-        var owner = options.Value.Owner;
+        var owner = _account.Owner;
         return repositories.CurrentValue.Repositories
             .Select(r => RepositoryName.TryParse(r.Name))
             .OfType<RepositoryName>()
@@ -252,7 +295,7 @@ internal sealed partial class GitHubAppCredentials(
         using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
         await GitHubHttp.EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
         var token = await response.Content.ReadFromJsonAsync(GitHubJsonContext.Default.AccessTokenResponse, cancellationToken).ConfigureAwait(false);
-        if (token?.Token is not { Length: > 0 })
+        if (token?.Token is not { Length: > 0 } || token.ExpiresAt <= time.GetUtcNow())
         {
             throw new GitHubApiException("GitHub returned an installation token response without a token.");
         }
