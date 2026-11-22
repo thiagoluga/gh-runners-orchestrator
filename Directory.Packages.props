@@ -16,12 +16,12 @@
     <!-- xUnit's VSTest adapter, required by dotnet test and the coverage collector. -->
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
     <!-- Coverage for Sonar. -->
-    <PackageVersion Include="coverlet.collector" Version="10.1.0" />
+    <PackageVersion Include="coverlet.collector" Version="10.1.1" />
     <!-- Assertions (Apache-2.0 fork of FluentAssertions). -->
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
     <!-- Substitutes for the GitHub and Docker boundaries. -->
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
     <!-- FakeTimeProvider for token expiry and timeouts. -->
-    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.1" />
   </ItemGroup>
 </Project>
