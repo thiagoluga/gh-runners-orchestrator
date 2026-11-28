@@ -380,3 +380,23 @@ gh-runner-2 at 13:55 UTC. The host's `compose.yaml` gained the loopback port map
   the connection.
 - Sandbox smoke run 44538472789 passed; afterwards `ghro_runners_launched_total 1`,
   `ghro_runners_finished_total 1`, `ghro_launch_failures_total 0`.
+
+## Two hosts - 2026-11-28
+
+[ADR 0013](adr/0013-peer-orchestrators-on-several-hosts.md): `gh-runner-2` (slots 0-4 and
+5-9, 16g each) and `github-runner` (192.168.68.50, one slot 0-5, 16g), each running the
+branch build with `PoolHosts: [gh-runner-2, github-runner]`, both repository lists equal
+(`runner-pool-sandbox` and `runner-pool-sandbox-2` at `MaxConcurrent: 2`).
+
+| Run | What | Result |
+|---|---|---|
+| sandbox 46170180603 + sandbox-2 46170184119 | `capacity` (3 legs + `overlap`) in both repositories at once | all 8 jobs green on both hosts, at most 2 per repository at once across the hosts; **one duplicate**: both hosts launched for sandbox-2's `overlap` within a second |
+| sandbox 46170898329 + sandbox-2 46170901604 | same, after the fix below | all 8 jobs green, 8 runners for 8 jobs (one was the earlier duplicate, which took a job), no duplicate |
+| sandbox 46171458880 | `capacity` with `github-runner`'s orchestrator stopped | its 3 jobs (odd ids) started on `gh-runner-2` 84-104 s after creation; the job owned by `gh-runner-2` started at once |
+
+Cause of the duplicate: a job released by `needs` keeps its run's `created_at`, so the
+host that did not own it saw it as six minutes old and took it over at once. The takeover
+delay now counts from when the host first saw the job queued.
+
+Across the 40 minutes neither host deleted a registration or container of the other
+(no `Offline runner … deleted` or `had no runner on GitHub` line), and no launch failed.

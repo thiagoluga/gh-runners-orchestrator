@@ -44,6 +44,30 @@ docker compose logs -f --tail 20
 
 Expect `Installation token renewed …` and then one `Cycle: …` line per poll interval.
 
+## Several hosts
+
+Each host runs its own orchestrator with its own slots, App key files and the same
+repository list ([ADR 0013](adr/0013-peer-orchestrators-on-several-hosts.md)). Add to
+`config/orchestrator.json` on every host:
+
+```jsonc
+"Host": "github-runner",                       // this host; differs on each host
+"PoolHosts": [ "gh-runner-2", "github-runner" ], // identical, same order, on every host
+"TakeOverAfter": "00:01:00"                     // optional; at least two poll intervals
+```
+
+- A queued job belongs to `PoolHosts[job id mod N]`. Another host serves it only after it
+  waited `TakeOverAfter`, so a job reaches a free slot elsewhere within that delay when
+  its owner is full or down.
+- Runner names carry the host (`orch-<host>--…`) and each host deletes only its own
+  registrations. Runners named before the switch (`orch-<owner>-…`) belong to the first
+  host of the list: put the existing host first.
+- `MaxConcurrent` is global: online runners of other hosts count.
+- Each host polls GitHub, so API use per installation grows with the hosts; watch
+  `ghro_rate_limit_remaining` on each.
+- Change `PoolHosts` on every host, then restart them. Before removing a host, stop its
+  orchestrator and let its runners finish.
+
 ## Multiple accounts
 
 See [multi-account.md](multi-account.md). Account/installation changes need a restart and

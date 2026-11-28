@@ -17,14 +17,14 @@ internal sealed class DemandPoller(IGitHubRunnerApi api, IOptions<OrchestratorOp
         var queuedRuns = await api.ListRunIdsAsync(repository, "queued", cancellationToken).ConfigureAwait(false);
         var activeRuns = await api.ListRunIdsAsync(repository, "in_progress", cancellationToken).ConfigureAwait(false);
         var pendingRuns = await api.ListRunIdsAsync(repository, "pending", cancellationToken).ConfigureAwait(false);
-        var count = 0;
+        var served = new List<WorkflowJob>();
         DateTimeOffset? oldest = null;
         foreach (var runId in queuedRuns.Concat(activeRuns).Concat(pendingRuns).Distinct())
         {
             var jobs = await api.ListJobsAsync(repository, runId, cancellationToken).ConfigureAwait(false);
             foreach (var job in jobs.Where(job => job.Status == "queued" && ServedLabels.Serves(_served, job.Labels)))
             {
-                count++;
+                served.Add(job);
                 if (job.CreatedAt is { } created && (oldest is null || created < oldest))
                 {
                     oldest = created;
@@ -32,9 +32,12 @@ internal sealed class DemandPoller(IGitHubRunnerApi api, IOptions<OrchestratorOp
             }
         }
 
-        return new QueuedJobs(count, oldest);
+        return new QueuedJobs(served, oldest);
     }
 }
 
-/// <summary>How many served jobs wait, and since when the oldest one waits (for the fairness tie-break).</summary>
-internal sealed record QueuedJobs(int Count, DateTimeOffset? OldestQueuedAt);
+/// <summary>The served jobs that wait, and since when the oldest one waits (for the fairness tie-break).</summary>
+internal sealed record QueuedJobs(IReadOnlyList<WorkflowJob> Jobs, DateTimeOffset? OldestQueuedAt)
+{
+    public int Count => Jobs.Count;
+}

@@ -12,6 +12,11 @@ versions follow [Semantic Versioning](https://semver.org/) from the first releas
 
 ### Added
 
+- Several runner hosts: one peer orchestrator per host shares the pool label. Each queued
+  job has an owner host and the others take it over after `TakeOverAfter`; runner names
+  carry the host and each host cleans up only its own; `MaxConcurrent` is global
+  ([ADR 0013](docs/adr/0013-peer-orchestrators-on-several-hosts.md)).
+
 - Optional status endpoint: `/healthz` and Prometheus `/metrics` with cycle, slot,
   demand, launch and rate-budget counters, published on the host's loopback by the
   reference deployment ([#22](https://github.com/thiagoluga/gh-runners-orchestrator/issues/22)).

@@ -9,23 +9,24 @@ namespace RunnerOrchestrator.Pool;
 /// (a job cancelled before pickup, or taken by another runner);</item>
 /// <item>orphan container: its runner is gone from GitHub on two cycles in a row, past a grace
 /// period (deleted by hand, or a container that outlived its job);</item>
-/// <item>orphan runner: an offline, idle <c>orch-</c> runner with no container (a container
-/// removed by hand, or a crash between registration and start).</item>
+/// <item>orphan runner: an offline, idle runner of this host with no container (a container
+/// removed by hand, or a crash between registration and start). Another host's runners are
+/// never touched: their containers are on that host (ADR 0013).</item>
 /// </list>
 /// Repositories whose runner list could not be read are left alone this cycle.
 /// </summary>
 internal static class LifecyclePlanner
 {
-    public const string RunnerPrefix = "orch-";
-
     public static LifecyclePlan Plan(
         DateTimeOffset now,
         IReadOnlyList<ManagedRunner> live,
         IReadOnlyDictionary<RepositoryName, IReadOnlyList<SelfHostedRunner>> runnersByRepository,
         IReadOnlySet<string> suspects,
         TimeSpan idleTimeout,
-        TimeSpan grace)
+        TimeSpan grace,
+        Func<string, bool>? isOwnRunner = null)
     {
+        isOwnRunner ??= name => name.StartsWith(PoolHosts.RunnerPrefix, StringComparison.OrdinalIgnoreCase);
         ArgumentNullException.ThrowIfNull(live);
         ArgumentNullException.ThrowIfNull(runnersByRepository);
         ArgumentNullException.ThrowIfNull(suspects);
@@ -65,7 +66,7 @@ internal static class LifecyclePlanner
         var withContainer = live.Select(c => (c.Repository, Name: c.RunnerName.ToLowerInvariant())).ToHashSet();
         var orphanRunners = runnersByRepository
             .SelectMany(pair => pair.Value.Select(runner => new OrphanRunner(pair.Key, runner)))
-            .Where(o => o.Runner.Name.StartsWith(RunnerPrefix, StringComparison.OrdinalIgnoreCase)
+            .Where(o => isOwnRunner(o.Runner.Name)
                 && !o.Runner.Busy
                 && string.Equals(o.Runner.Status, "offline", StringComparison.OrdinalIgnoreCase)
                 && !withContainer.Contains((o.Repository, o.Runner.Name.ToLowerInvariant())))

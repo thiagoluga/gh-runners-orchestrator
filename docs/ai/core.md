@@ -8,7 +8,9 @@ the task needs them.
 An orchestrator of ephemeral GitHub Actions runners: one container per job, a fixed pool
 of slots shared by **private** repositories in explicitly authorized accounts trusted by
 the maintainer on one Linux Docker Engine
-host. Out of scope until an ADR says otherwise: web UI, Kubernetes, several hosts, public
+host, or on several such hosts with one peer orchestrator each
+([ADR 0013](../adr/0013-peer-orchestrators-on-several-hosts.md)). Out of scope until an ADR
+says otherwise: web UI, Kubernetes, a central controller, public
 or untrusted third-party repositories, autoscaling of hosts. See
 [ADR 0011](../adr/0011-multiple-account-installations.md) for account authorization.
 

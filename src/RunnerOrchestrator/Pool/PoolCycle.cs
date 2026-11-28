@@ -30,6 +30,11 @@ internal sealed partial class PoolCycle(
     /// </summary>
     public static readonly TimeSpan StuckCreatedAfter = TimeSpan.FromMinutes(2);
 
+    private readonly PoolHosts _hosts = new(options);
+
+    /// <summary>When this host first saw each queued job; jobs no longer queued are dropped every cycle.</summary>
+    private Dictionary<long, DateTimeOffset> _firstSeenQueued = [];
+
     private IReadOnlySet<string> _suspects = new HashSet<string>(StringComparer.Ordinal);
 
     public async Task RunOnceAsync(CancellationToken cancellationToken)
@@ -55,24 +60,37 @@ internal sealed partial class PoolCycle(
             .ToList();
         var runners = await ReadRunnersAsync(watched, cancellationToken).ConfigureAwait(false);
 
-        var lifecycle = LifecyclePlanner.Plan(boundaries.Time.GetUtcNow(), live, runners, _suspects, settings.IdleRunnerTimeout, StuckCreatedAfter);
+        var lifecycle = LifecyclePlanner.Plan(boundaries.Time.GetUtcNow(), live, runners, _suspects, settings.IdleRunnerTimeout, StuckCreatedAfter, _hosts.IsOwn);
         _suspects = lifecycle.Suspects;
         var removed = await ApplyLifecycleAsync(lifecycle, runners, cancellationToken).ConfigureAwait(false);
         live.RemoveAll(c => removed.Contains(c.ContainerId));
 
         var demands = new List<RepositoryDemand>();
+        var seenThisCycle = new Dictionary<long, DateTimeOffset>();
+        var demandUnread = false;
         foreach (var repository in enabled)
         {
             try
             {
-                demands.Add(await ReadDemandAsync(repository, live, runners, cancellationToken).ConfigureAwait(false));
+                demands.Add(await ReadDemandAsync(repository, live, runners, seenThisCycle, cancellationToken).ConfigureAwait(false));
             }
             catch (Exception exception) when (IsTransient(exception, cancellationToken))
             {
+                demandUnread = true;
                 LogRunnersUnreadable(logger, repository.Name, exception.Message);
             }
         }
 
+        if (demandUnread)
+        {
+            // Keep the first sightings of a repository that was not read, or its takeover waits restart.
+            foreach (var (job, seen) in _firstSeenQueued)
+            {
+                seenThisCycle.TryAdd(job, seen);
+            }
+        }
+
+        _firstSeenQueued = seenThisCycle;
         var slots = settings.Slots;
         var pool = BuildPool(containers, live, removed, finishedRemoved);
         status.Blocked(pool is null);
@@ -259,14 +277,34 @@ internal sealed partial class PoolCycle(
         EnabledRepository repository,
         List<ManagedRunner> live,
         Dictionary<RepositoryName, IReadOnlyList<SelfHostedRunner>> runners,
+        Dictionary<long, DateTimeOffset> seenThisCycle,
         CancellationToken cancellationToken)
     {
         var queued = await poller.ReadQueuedJobsAsync(repository.Name, cancellationToken).ConfigureAwait(false);
-        var busy = runners.TryGetValue(repository.Name, out var list)
-            ? list.Where(r => r.Busy).Select(r => r.Name).ToHashSet(StringComparer.OrdinalIgnoreCase)
-            : [];
+        var registered = runners.TryGetValue(repository.Name, out var list) ? list : [];
+        var busy = registered.Where(r => r.Busy).Select(r => r.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var waiting = live.Count(c => c.Repository == repository.Name && !busy.Contains(c.RunnerName));
-        return new RepositoryDemand(repository.Name, queued.Count, waiting, repository.MaxConcurrent, queued.OldestQueuedAt);
+        if (!_hosts.IsMultiHost)
+        {
+            return new RepositoryDemand(repository.Name, queued.Count, waiting, repository.MaxConcurrent, queued.OldestQueuedAt);
+        }
+
+        // Another host's runner counts once it is online: an offline one is either starting or
+        // left by a crash, and only its own host can tell which (ADR 0013).
+        var foreign = registered.Where(r => _hosts.IsForeign(r.Name) && string.Equals(r.Status, "online", StringComparison.OrdinalIgnoreCase)).ToList();
+        var covered = waiting + foreign.Count(r => !r.Busy);
+        var now = boundaries.Time.GetUtcNow();
+        foreach (var id in queued.Jobs.Select(job => job.Id))
+        {
+            seenThisCycle[id] = _firstSeenQueued.GetValueOrDefault(id, now);
+        }
+
+        var claimable = queued.Jobs
+            .OrderBy(j => j.CreatedAt ?? DateTimeOffset.MaxValue)
+            .ThenBy(j => j.Id)
+            .Skip(covered)
+            .Count(j => _hosts.MayServe(j, seenThisCycle[j.Id], now));
+        return new RepositoryDemand(repository.Name, queued.Count, waiting, repository.MaxConcurrent, queued.OldestQueuedAt, claimable, foreign.Count);
     }
 
     /// <summary>

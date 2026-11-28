@@ -28,7 +28,8 @@ public sealed class DemandAndGuardTests
 
         var queued = await poller.ReadQueuedJobsAsync(Sandbox, TestContext.Current.CancellationToken);
 
-        queued.Should().Be(new QueuedJobs(2, new DateTimeOffset(2026, 11, 15, 11, 0, 0, TimeSpan.Zero)));
+        queued.Count.Should().Be(2);
+        queued.OldestQueuedAt.Should().Be(new DateTimeOffset(2026, 11, 15, 11, 0, 0, TimeSpan.Zero));
         await _api.Received(1).ListJobsAsync(Sandbox, 1, Arg.Any<CancellationToken>());
     }
 
@@ -50,7 +51,8 @@ public sealed class DemandAndGuardTests
 
         var queued = await poller.ReadQueuedJobsAsync(Sandbox, TestContext.Current.CancellationToken);
 
-        queued.Should().Be(new QueuedJobs(2, oldest));
+        queued.Count.Should().Be(2);
+        queued.OldestQueuedAt.Should().Be(oldest);
         await _api.Received(1).ListJobsAsync(Sandbox, 1, Arg.Any<CancellationToken>());
         await _api.Received(1).ListJobsAsync(Sandbox, 2, Arg.Any<CancellationToken>());
     }

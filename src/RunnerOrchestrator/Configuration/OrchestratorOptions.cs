@@ -60,4 +60,13 @@ public sealed class OrchestratorOptions
     /// orchestrator container; the deployment decides what reaches it (loopback only by default).
     /// </summary>
     public string StatusHost { get; set; } = "+";
+
+    /// <summary>This host's name in a pool of several hosts (ADR 0013); empty with one host.</summary>
+    public string Host { get; set; } = string.Empty;
+
+    /// <summary>Every host of the pool, in the same order on every host; empty with one host.</summary>
+    public IList<string> PoolHosts { get; } = [];
+
+    /// <summary>A queued job owned by another host may be served here after waiting this long (ADR 0013).</summary>
+    public TimeSpan TakeOverAfter { get; set; } = TimeSpan.FromMinutes(1);
 }

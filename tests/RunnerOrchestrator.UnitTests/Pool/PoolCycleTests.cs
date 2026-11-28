@@ -289,6 +289,101 @@ public sealed class PoolCycleTests
             .Returns([.. Enumerable.Range(1, count).Select(i => new WorkflowJob(i, 9, "queued", ["vm-pool"], null))]);
     }
 
+    [Fact]
+    public async Task MultiHost_LaunchesOnlyForJobsThisHostOwns()
+    {
+        QueueJobsAt([10, 11], _time.GetUtcNow());
+
+        await Create(MultiHost()).RunOnceAsync(TestContext.Current.CancellationToken);
+
+        await _runtime.Received(1).CreateAsync(Arg.Is<ContainerSpec>(s => s.Name.StartsWith("orch-host-a--thiagoluga-", StringComparison.Ordinal)
+            && s.Labels["orchestrator.host"] == "host-a"), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task MultiHost_TakesOverAnotherHostsJobOnlyAfterSeeingItQueuedForTheDelay()
+    {
+        // GitHub's creation time is the run's: a job released by `needs` looks old at once.
+        QueueJobsAt([11], _time.GetUtcNow() - TimeSpan.FromMinutes(6));
+        var cycle = Create(MultiHost());
+
+        await cycle.RunOnceAsync(TestContext.Current.CancellationToken);
+        _time.Advance(TimeSpan.FromSeconds(40));
+        await cycle.RunOnceAsync(TestContext.Current.CancellationToken);
+        await _runtime.DidNotReceiveWithAnyArgs().CreateAsync(default!, TestContext.Current.CancellationToken);
+
+        _time.Advance(TimeSpan.FromSeconds(20));
+        await cycle.RunOnceAsync(TestContext.Current.CancellationToken);
+
+        await _runtime.Received(1).CreateAsync(Arg.Any<ContainerSpec>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task MultiHost_AnotherHostsJobStillYoung_IsLeftToIt()
+    {
+        QueueJobsAt([11], _time.GetUtcNow() - TimeSpan.FromSeconds(30));
+
+        await Create(MultiHost()).RunOnceAsync(TestContext.Current.CancellationToken);
+
+        await _runtime.DidNotReceiveWithAnyArgs().CreateAsync(default!, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task MultiHost_OnlineIdleRunnerOfAnotherHost_CoversTheOldestJob()
+    {
+        QueueJobsAt([10], _time.GetUtcNow() - TimeSpan.FromMinutes(5));
+        _api.ListRunnersAsync(Sandbox, Arg.Any<CancellationToken>()).Returns([new SelfHostedRunner(5, "orch-host-b--thiagoluga-runner-pool-sandbox-slot-1-aa", "online", false)]);
+
+        await Create(MultiHost()).RunOnceAsync(TestContext.Current.CancellationToken);
+
+        await _runtime.DidNotReceiveWithAnyArgs().CreateAsync(default!, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task MultiHost_MaxConcurrentCountsOnlineRunnersOfOtherHosts()
+    {
+        _repositories.CurrentValue = new RepositoryListOptions { Repositories = { new RepositoryOptions { Name = "thiagoluga/runner-pool-sandbox", MaxConcurrent = 1 } } };
+        QueueJobsAt([10], _time.GetUtcNow());
+        _api.ListRunnersAsync(Sandbox, Arg.Any<CancellationToken>()).Returns([new SelfHostedRunner(5, "orch-host-b--thiagoluga-runner-pool-sandbox-slot-1-aa", "online", true)]);
+
+        await Create(MultiHost()).RunOnceAsync(TestContext.Current.CancellationToken);
+
+        await _runtime.DidNotReceiveWithAnyArgs().CreateAsync(default!, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task MultiHost_OfflineRunnerOfAnotherHost_IsNeitherDeletedNorCounted()
+    {
+        _repositories.CurrentValue = new RepositoryListOptions { Repositories = { new RepositoryOptions { Name = "thiagoluga/runner-pool-sandbox", MaxConcurrent = 1 } } };
+        QueueJobsAt([10], _time.GetUtcNow());
+        _api.ListRunnersAsync(Sandbox, Arg.Any<CancellationToken>()).Returns([
+            new SelfHostedRunner(5, "orch-host-b--thiagoluga-runner-pool-sandbox-slot-1-aa", "offline", false),
+            new SelfHostedRunner(6, "orch-host-a--thiagoluga-runner-pool-sandbox-slot-1-bb", "offline", false),
+        ]);
+
+        await Create(MultiHost()).RunOnceAsync(TestContext.Current.CancellationToken);
+
+        await _api.DidNotReceive().DeleteRunnerAsync(Sandbox, 5, Arg.Any<CancellationToken>());
+        await _api.Received(1).DeleteRunnerAsync(Sandbox, 6, Arg.Any<CancellationToken>());
+        await _runtime.Received(1).CreateAsync(Arg.Any<ContainerSpec>(), Arg.Any<CancellationToken>());
+    }
+
+    private static OrchestratorOptions MultiHost()
+    {
+        var options = TestOptions.Orchestrator();
+        options.Host = "host-a";
+        options.PoolHosts.Add("host-a");
+        options.PoolHosts.Add("host-b");
+        return options;
+    }
+
+    private void QueueJobsAt(long[] ids, DateTimeOffset queuedAt)
+    {
+        _api.ListRunIdsAsync(Sandbox, "queued", Arg.Any<CancellationToken>()).Returns([9L]);
+        _api.ListJobsAsync(Sandbox, 9, Arg.Any<CancellationToken>())
+            .Returns([.. ids.Select(id => new WorkflowJob(id, 9, "queued", ["vm-pool"], queuedAt))]);
+    }
+
     private static ContainerSummary Container(string id, string state, string slot) => new(id, $"orch-{id}", state, new Dictionary<string, string>
     {
         ["orchestrator.managed"] = "true",
@@ -299,9 +394,9 @@ public sealed class PoolCycleTests
         ["orchestrator.created-at"] = "2026-11-15T12:00:00.0000000+00:00",
     });
 
-    private PoolCycle Create()
+    private PoolCycle Create(OrchestratorOptions? settings = null)
     {
-        var options = TestOptions.Wrap(TestOptions.Orchestrator());
+        var options = TestOptions.Wrap(settings ?? TestOptions.Orchestrator());
         var time = _time;
         return new PoolCycle(
             new PoolBoundaries(_runtime, _api, time, Status),
