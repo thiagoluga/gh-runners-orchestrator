@@ -46,6 +46,9 @@ Expect `Installation token renewed …` and then one `Cycle: …` line per poll 
 
 ## Several hosts
 
+To add a VM to the pool, follow [new-runner-host.md](new-runner-host.md): one script
+creates the VM, one script sets it up and joins it to the pool.
+
 Each host runs its own orchestrator with its own slots, App key files and the same
 repository list ([ADR 0013](adr/0013-peer-orchestrators-on-several-hosts.md)). Add to
 `config/orchestrator.json` on every host:

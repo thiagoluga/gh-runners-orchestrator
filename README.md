@@ -45,6 +45,7 @@ rule matters more than the check. Details: [ADR 0006](docs/adr/0006-security-mod
 1. Create the GitHub App, install it on the repositories to serve and copy its key to the
    host: [docs/maintainer-setup.md](docs/maintainer-setup.md).
 2. Install and run the pool on the host: [docs/operations.md](docs/operations.md).
+3. Add more runner hosts: [docs/new-runner-host.md](docs/new-runner-host.md).
 
 ## Contributing
 

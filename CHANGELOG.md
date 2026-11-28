@@ -12,6 +12,10 @@ versions follow [Semantic Versioning](https://semver.org/) from the first releas
 
 ### Added
 
+- Runbook and scripts to add a runner host: `deploy/hyperv/New-RunnerVm.ps1` creates the
+  Hyper-V VM, `deploy/host/Add-RunnerHost.ps1` sets it up (`setup-host.sh`), copies the
+  settings and App keys host to host and joins it to every host's `PoolHosts`.
+
 - Several runner hosts: one peer orchestrator per host shares the pool label. Each queued
   job has an owner host and the others take it over after `TakeOverAfter`; runner names
   carry the host and each host cleans up only its own; `MaxConcurrent` is global
