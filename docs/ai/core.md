@@ -77,6 +77,7 @@ send scripts by `scp` and run them with `bash file < /dev/null` (piped scripts g
 | Maintainer steps (App, Sonar, toy repository) | [docs/maintainer-setup.md](../maintainer-setup.md) |
 | Proof of concept: measured results | [docs/proof-of-concept.md](../proof-of-concept.md) |
 | Operations (install, enable, update, rotate) | [docs/operations.md](../operations.md) |
+| Add or remove a runner host | [docs/new-runner-host.md](../new-runner-host.md) |
 | Runner pool verification | [docs/pool-verification.md](../pool-verification.md) |
 | Contribution rules | [CONTRIBUTING.md](../../CONTRIBUTING.md) |
 
