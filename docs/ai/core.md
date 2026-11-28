@@ -59,8 +59,10 @@ or untrusted third-party repositories, autoscaling of hosts. See
 The pool runs on its own VM, `gh-runner-2`: Ubuntu 24.04 on Hyper-V, 16 vCPUs, 40 GiB of fixed memory,
 static `192.168.68.66/22`, Docker Engine 29 (`nofile` 65536 by default, cgroup v2), user
 `ci` with passwordless sudo, SSH by key only:
-`ssh -i ~/.ssh/ci_vm_ed25519 ci@192.168.68.66`. The old VM `192.168.68.50` (`vm-dev-1`) is
-retired and was off at the time; its runner container and volumes may still be on its disk. From Windows, use SSH from PowerShell;
+`ssh -i ~/.ssh/ci_vm_ed25519 ci@192.168.68.66`. Since 2026-11-28 the second host is
+`github-runner` (`192.168.68.50`, the former `vm-dev-1`, 8 vCPUs, 30 GiB, one slot), same user and
+key, a peer of gh-runner-2 (ADR 0013). Its old `saas-foundry-runners-runner-1-1` container,
+whose registration GitHub deleted, still restarts in a loop; the maintainer chose to leave it. From Windows, use SSH from PowerShell;
 send scripts by `scp` and run them with `bash file < /dev/null` (piped scripts get CRLF and
 `docker exec -i` swallows stdin). Do not hammer the SSH port with polling.
 

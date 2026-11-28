@@ -400,3 +400,10 @@ delay now counts from when the host first saw the job queued.
 
 Across the 40 minutes neither host deleted a registration or container of the other
 (no `Offline runner … deleted` or `had no runner on GitHub` line), and no launch failed.
+
+Released on both hosts at 17:53 UTC: revision `cce24a6`
+([#47](https://github.com/thiagoluga/gh-runners-orchestrator/pull/47)), digest
+`sha256:d548ccab5de5cc4b11ff449480342931de68a438611ab6817f3a29ac926afb66`; backups
+`compose.yaml.before-multi-host` and `config/orchestrator.json.before-multi-host` on
+gh-runner-2, `compose.yaml.before-cce24a6` on both. Smoke run 46173020684 passed on
+`github-runner` (an odd job id, owned by it).
