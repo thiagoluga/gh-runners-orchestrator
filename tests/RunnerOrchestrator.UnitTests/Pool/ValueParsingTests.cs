@@ -70,7 +70,7 @@ public sealed class ValueParsingTests
     [Fact]
     public void CreateRunnerName_LongRepository_StaysWithin64ValidCharacters()
     {
-        var name = RunnerLauncher.CreateRunnerName(new RepositoryName("thiagoluga", new string('a', 90) + ".X_y"), "slot-1", "0123abcd");
+        var name = RunnerLauncher.CreateRunnerName("orch-", new RepositoryName("thiagoluga", new string('a', 90) + ".X_y"), "slot-1", "0123abcd");
 
         name.Should().StartWith("orch-thiagoluga-aaa").And.EndWith("-slot-1-0123abcd");
         name.Length.Should().BeLessThanOrEqualTo(64);
@@ -80,7 +80,7 @@ public sealed class ValueParsingTests
     [Fact]
     public void CreateRunnerName_ShortRepository_KeepsItWhole()
     {
-        RunnerLauncher.CreateRunnerName(new RepositoryName("thiagoluga", "Runner.Pool_Sandbox"), "slot-2", "ffff0000")
+        RunnerLauncher.CreateRunnerName("orch-", new RepositoryName("thiagoluga", "Runner.Pool_Sandbox"), "slot-2", "ffff0000")
             .Should().Be("orch-thiagoluga-runner-pool-sandbox-slot-2-ffff0000");
     }
 }

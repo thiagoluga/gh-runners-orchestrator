@@ -14,5 +14,8 @@ internal static class ManagedLabels
 
     public const string InstallationId = "orchestrator.installation-id";
 
+    /// <summary>The host whose orchestrator created the container, in a pool of several hosts (ADR 0013).</summary>
+    public const string Host = "orchestrator.host";
+
     public const string ManagedFilter = Managed + "=true";
 }

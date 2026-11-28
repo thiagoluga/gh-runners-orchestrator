@@ -1,6 +1,7 @@
 # 0009. Run a central controller on the production VPS and an agent on each runner host
 
-- Status: Proposed (planned after the saas-foundry migration, phase 4)
+- Status: Proposed (planned after the saas-foundry migration, phase 4); deferred by
+  [0013](0013-peer-orchestrators-on-several-hosts.md), which replaces point 6
 - Date: 2026-11-15
 - Deciders: Thiago Lugarini
 

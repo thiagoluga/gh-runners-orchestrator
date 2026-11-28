@@ -40,7 +40,7 @@ internal sealed partial class RunnerLauncher(
 
         await runtime.EnsureImageAsync(settings.RunnerImage, cancellationToken).ConfigureAwait(false);
 
-        var name = CreateRunnerName(repository, slot.Name, RandomNumberGenerator.GetHexString(8, lowercase: true));
+        var name = CreateRunnerName(PoolHosts.NamePrefixFor(settings), repository, slot.Name, RandomNumberGenerator.GetHexString(8, lowercase: true));
         var jit = await api.GenerateJitConfigAsync(repository, name, ServedLabels.For(settings.RunnerLabels), cancellationToken).ConfigureAwait(false);
         string? containerId = null;
         try
@@ -54,6 +54,10 @@ internal sealed partial class RunnerLauncher(
                 [ManagedLabels.RunnerId] = jit.RunnerId.ToString(CultureInfo.InvariantCulture),
                 [ManagedLabels.CreatedAt] = time.GetUtcNow().ToString("O", CultureInfo.InvariantCulture),
             };
+            if (!string.IsNullOrEmpty(settings.Host))
+            {
+                labels[ManagedLabels.Host] = settings.Host;
+            }
             if (api.GetAppId(repository) is { } appId)
             {
                 labels[ManagedLabels.AppId] = appId.ToString(CultureInfo.InvariantCulture);
@@ -86,18 +90,21 @@ internal sealed partial class RunnerLauncher(
         }
     }
 
-    /// <summary><c>orch-&lt;repo&gt;-&lt;slot&gt;-&lt;random&gt;</c>, lower case, valid as a runner and a container name.</summary>
-    internal static string CreateRunnerName(RepositoryName repository, string slot, string suffix)
+    /// <summary>
+    /// <c>orch-&lt;repo&gt;-&lt;slot&gt;-&lt;random&gt;</c>, or <c>orch-&lt;host&gt;--…</c> in a pool of
+    /// several hosts (ADR 0013); lower case, valid as a runner and a container name.
+    /// </summary>
+    internal static string CreateRunnerName(string prefix, RepositoryName repository, string slot, string suffix)
     {
         var tail = $"-{Sanitize(slot)}-{suffix}";
         var repo = Sanitize($"{repository.Owner}-{repository.Name}");
-        var room = MaxNameLength - "orch-".Length - tail.Length;
+        var room = MaxNameLength - prefix.Length - tail.Length;
         if (repo.Length > room)
         {
             repo = repo[..Math.Max(1, room)].TrimEnd('-');
         }
 
-        return $"orch-{repo}{tail}";
+        return $"{prefix}{repo}{tail}";
     }
 
     private static string Sanitize(string value)

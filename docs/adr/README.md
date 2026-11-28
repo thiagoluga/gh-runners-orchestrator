@@ -17,3 +17,4 @@ A decision recorded here is not reopened without a new ADR that supersedes it. C
 | [0010](0010-agent-compatible-contribution-workflow.md) | Codex and Claude entry points, explicit documentation PR checks | Accepted |
 | [0011](0011-multiple-account-installations.md) | One global pool with independently authenticated trusted account installations | Accepted |
 | [0012](0012-multiple-github-apps.md) | Configurable private GitHub App registry sharing one global pool | Accepted |
+| [0013](0013-peer-orchestrators-on-several-hosts.md) | One peer orchestrator per host sharing the pool label, with job owners and global limits | Accepted |

@@ -17,7 +17,7 @@ internal sealed partial class OrchestratorWorker(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var interval = options.Value.PollInterval;
-        LogStarting(logger, interval, options.Value.Slots.Count);
+        LogStarting(logger, interval, options.Value.Slots.Count, string.IsNullOrEmpty(options.Value.Host) ? "a single host" : $"host {options.Value.Host} of {string.Join(", ", options.Value.PoolHosts)}");
         using var timer = new PeriodicTimer(interval, time);
         do
         {
@@ -35,8 +35,8 @@ internal sealed partial class OrchestratorWorker(
         while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false));
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Orchestrator polling every {Interval} with {Slots} slots")]
-    private static partial void LogStarting(ILogger logger, TimeSpan interval, int slots);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Orchestrator polling every {Interval} with {Slots} slots on {Pool}")]
+    private static partial void LogStarting(ILogger logger, TimeSpan interval, int slots, string pool);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Cycle failed; the next one runs on schedule")]
     private static partial void LogCycleFailed(ILogger logger, Exception exception);

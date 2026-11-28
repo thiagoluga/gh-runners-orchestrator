@@ -20,7 +20,8 @@ internal static class CapacityPlanner
         var taken = live.Select(c => c.Slot).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var free = new Queue<string>(slots.Where(s => !taken.Contains(s)));
         var state = demands
-            .Select((d, order) => new Entry(d, order, live.Count(c => c.Repository == d.Repository), Math.Max(0, d.QueuedJobs - d.WaitingRunners)))
+            .Select((d, order) => new Entry(d, order, live.Count(c => c.Repository == d.Repository) + d.OtherHostsRunning,
+                d.Claimable ?? Math.Max(0, d.QueuedJobs - d.WaitingRunners)))
             .ToList();
 
         var decisions = new List<LaunchDecision>();
@@ -60,7 +61,19 @@ internal static class CapacityPlanner
 /// <summary>A managed container that still holds its slot (any state but exited).</summary>
 internal sealed record PoolContainer(RepositoryName Repository, string Slot);
 
-/// <summary>Queued jobs the pool serves, this repository's runners that have not picked a job yet, and the oldest wait.</summary>
-internal sealed record RepositoryDemand(RepositoryName Repository, int QueuedJobs, int WaitingRunners, int MaxConcurrent, DateTimeOffset? OldestQueuedAt = null);
+/// <summary>
+/// Queued jobs the pool serves, this host's runners that have not picked a job yet, and the
+/// oldest wait. With several hosts (ADR 0013), <paramref name="Claimable"/> is how many
+/// uncovered jobs this host may serve, and <paramref name="OtherHostsRunning"/> counts the
+/// repository's online runners on other hosts toward fairness and <c>MaxConcurrent</c>.
+/// </summary>
+internal sealed record RepositoryDemand(
+    RepositoryName Repository,
+    int QueuedJobs,
+    int WaitingRunners,
+    int MaxConcurrent,
+    DateTimeOffset? OldestQueuedAt = null,
+    int? Claimable = null,
+    int OtherHostsRunning = 0);
 
 internal sealed record LaunchDecision(RepositoryName Repository, string Slot);

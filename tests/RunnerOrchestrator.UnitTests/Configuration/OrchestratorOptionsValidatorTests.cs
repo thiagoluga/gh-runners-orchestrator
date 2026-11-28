@@ -48,6 +48,30 @@ public sealed class OrchestratorOptionsValidatorTests
         _validator.Validate(null, options).Succeeded.Should().Be(valid);
     }
 
+    [Theory]
+    [InlineData("", "", 60, true)]
+    [InlineData("host-a", "host-a,host-b", 60, true)]
+    [InlineData("host-a", "", 60, false)]
+    [InlineData("host-c", "host-a,host-b", 60, false)]
+    [InlineData("host-a", "host-a,host-a", 60, false)]
+    [InlineData("host-a", "host-a,Host-B", 60, false)]
+    [InlineData("host-a", "host-a,a--b", 60, false)]
+    [InlineData("thiagoluga", "thiagoluga,host-b", 60, false)]
+    [InlineData("host-a", "host-a,host-b", 30, false)]
+    public void Validate_PoolHosts(string host, string hosts, int takeOverSeconds, bool valid)
+    {
+        var options = TestOptions.Orchestrator();
+        options.Host = host;
+        foreach (var name in hosts.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            options.PoolHosts.Add(name);
+        }
+
+        options.TakeOverAfter = TimeSpan.FromSeconds(takeOverSeconds);
+
+        _validator.Validate(null, options).Succeeded.Should().Be(valid);
+    }
+
     [Fact]
     public void Validate_DuplicateSlotOrBadMemory_Fails()
     {

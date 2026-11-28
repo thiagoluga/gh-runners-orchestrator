@@ -49,6 +49,7 @@ internal sealed class OrchestratorOptionsValidator : IValidateOptions<Orchestrat
         }
 
         ValidateSlots(options.Slots, errors);
+        ValidateHosts(options, errors);
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
     }
 
@@ -131,6 +132,44 @@ internal sealed class OrchestratorOptionsValidator : IValidateOptions<Orchestrat
         if (references.Any(appId => !registered.Contains(appId)))
         {
             errors.Add("Every account AppId must reference a registered GitHubApp.");
+        }
+    }
+
+    private static void ValidateHosts(OrchestratorOptions options, List<string> errors)
+    {
+        if (options.PoolHosts.Count == 0)
+        {
+            if (!string.IsNullOrEmpty(options.Host))
+            {
+                errors.Add("Orchestrator:Host needs Orchestrator:PoolHosts listing every host of the pool.");
+            }
+
+            return;
+        }
+
+        if (options.PoolHosts.Any(h => !PoolHosts.IsValidName(h)))
+        {
+            errors.Add("Orchestrator:PoolHosts names must be 1-16 lower-case letters, digits or single hyphens, starting and ending with a letter or digit.");
+        }
+
+        if (options.PoolHosts.Distinct(StringComparer.Ordinal).Count() != options.PoolHosts.Count)
+        {
+            errors.Add("Orchestrator:PoolHosts must not repeat a host.");
+        }
+
+        if (!options.PoolHosts.Contains(options.Host, StringComparer.Ordinal))
+        {
+            errors.Add("Orchestrator:Host must be one of Orchestrator:PoolHosts.");
+        }
+
+        if (options.PoolHosts.Any(h => options.EffectiveAccounts().Any(a => string.Equals(a.Owner, h, StringComparison.OrdinalIgnoreCase))))
+        {
+            errors.Add("Orchestrator:PoolHosts names must differ from account names.");
+        }
+
+        if (options.TakeOverAfter < options.PollInterval * 2)
+        {
+            errors.Add("Orchestrator:TakeOverAfter must be at least two poll intervals.");
         }
     }
 
