@@ -294,9 +294,9 @@ internal sealed partial class PoolCycle(
         var foreign = registered.Where(r => _hosts.IsForeign(r.Name) && string.Equals(r.Status, "online", StringComparison.OrdinalIgnoreCase)).ToList();
         var covered = waiting + foreign.Count(r => !r.Busy);
         var now = boundaries.Time.GetUtcNow();
-        foreach (var job in queued.Jobs)
+        foreach (var id in queued.Jobs.Select(job => job.Id))
         {
-            seenThisCycle[job.Id] = _firstSeenQueued.GetValueOrDefault(job.Id, now);
+            seenThisCycle[id] = _firstSeenQueued.GetValueOrDefault(id, now);
         }
 
         var claimable = queued.Jobs

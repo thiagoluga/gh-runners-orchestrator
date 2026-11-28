@@ -76,12 +76,10 @@ internal sealed class PoolHosts
         }
 
         var rest = runnerName[RunnerPrefix.Length..];
-        foreach (var host in _longestFirst)
+        var match = _longestFirst.FirstOrDefault(host => rest.StartsWith(host + HostSeparator, StringComparison.OrdinalIgnoreCase));
+        if (match is not null)
         {
-            if (rest.StartsWith(host + HostSeparator, StringComparison.OrdinalIgnoreCase))
-            {
-                return host;
-            }
+            return match;
         }
 
         var separator = rest.IndexOf(HostSeparator, StringComparison.Ordinal);
